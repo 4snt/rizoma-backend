@@ -2,30 +2,13 @@ name: bio-platform
 
 # ─────────────────────────────────────────────────────────────────
 #  Bio-Platform — Docker Compose para Coolify / produção
-#
-#  Como usar:
-#  1. Copie .env.coolify.example → .env  e preencha as variáveis
-#  2. No Coolify: aponte para este arquivo como "Docker Compose File"
-#  3. Configure os domínios no Coolify para:
-#       frontend  → porta 3005   (ex: app.meusite.com)
-#       api       → porta 8005   (ex: api.meusite.com)
-#       minio     → porta 9005   (console, ex: minio.meusite.com)
-#
-#  As únicas variáveis que mudam entre ambientes:
-#    - NEXT_PUBLIC_API_URL / NEXT_PUBLIC_WS_URL  (URL pública da API)
-#    - NEXTAUTH_URL                              (URL pública do frontend)
-#    - CORS_ORIGINS                              (mesmo valor do frontend)
-#    - Senhas / secrets
+#  Imagens buildadas via GitHub Actions e publicadas no ghcr.io
 # ─────────────────────────────────────────────────────────────────
 
 services:
 
-  # ── Banco de dados ──────────────────────────────────────────────
   postgres:
-    image: bio-platform-postgres:latest
-    build:
-      context: https://github.com/4snt/bio-platform.git#master:db
-      dockerfile: Dockerfile
+    image: ghcr.io/4snt/bio-platform-postgres:latest
     restart: unless-stopped
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-bioinformatica}
@@ -41,7 +24,6 @@ services:
     networks:
       - internal
 
-  # ── Elasticsearch ───────────────────────────────────────────────
   elasticsearch:
     image: elasticsearch:8.13.0
     restart: unless-stopped
@@ -59,7 +41,6 @@ services:
     networks:
       - internal
 
-  # ── MinIO (object storage) ──────────────────────────────────────
   minio:
     image: minio/minio
     restart: unless-stopped
@@ -70,7 +51,7 @@ services:
     volumes:
       - minio_data:/data
     ports:
-      - "${MINIO_CONSOLE_PORT:-9005}:9001"   # Console web (expor no Coolify se quiser acesso)
+      - "${MINIO_CONSOLE_PORT:-9005}:9001"
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live"]
       interval: 5s
@@ -79,39 +60,29 @@ services:
     networks:
       - internal
 
-  # ── FastAPI ─────────────────────────────────────────────────────
   api:
-    image: bio-platform-api:latest
-    build:
-      context: https://github.com/4snt/bio-platform.git#master:api
-      dockerfile: Dockerfile
+    image: ghcr.io/4snt/bio-platform-api:latest
     restart: unless-stopped
     ports:
       - "${API_PORT:-8005}:8000"
     environment:
-      # PostgreSQL
-      POSTGRES_HOST:     postgres
-      POSTGRES_PORT:     5432
-      POSTGRES_DB:       ${POSTGRES_DB:-bioinformatica}
-      POSTGRES_USER:     ${POSTGRES_USER:-api_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
-      # Elasticsearch
-      ES_HOST: http://elasticsearch:9200
-      # MinIO — endpoint interno para o backend se comunicar
+      POSTGRES_HOST:         postgres
+      POSTGRES_PORT:         5432
+      POSTGRES_DB:           ${POSTGRES_DB:-bioinformatica}
+      POSTGRES_USER:         ${POSTGRES_USER:-api_user}
+      POSTGRES_PASSWORD:     ${POSTGRES_PASSWORD:-changeme}
+      ES_HOST:               http://elasticsearch:9200
       MINIO_ENDPOINT:        minio:9000
-      # endpoint público: URL que o BROWSER usa para acessar as presigned URLs
       MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-localhost:9000}
-      MINIO_ACCESS_KEY:  ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY:  ${MINIO_SECRET_KEY:-changeme}
-      MINIO_SECURE:      ${MINIO_SECURE:-false}
-      # Auth
+      MINIO_ACCESS_KEY:      ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY:      ${MINIO_SECRET_KEY:-changeme}
+      MINIO_SECURE:          ${MINIO_SECURE:-false}
       GOOGLE_CLIENT_ID:      ${GOOGLE_CLIENT_ID}
       JWT_SECRET:            ${JWT_SECRET}
       ALLOWED_EMAIL_DOMAIN:  ${ALLOWED_EMAIL_DOMAIN:-@ufvjm.edu.br}
       JWT_ACCESS_MINUTES:    ${JWT_ACCESS_MINUTES:-60}
-      # CORS — lista separada por vírgula das origens permitidas
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3005}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      CORS_ORIGINS:          ${CORS_ORIGINS:-http://localhost:3005}
+      LOG_LEVEL:             ${LOG_LEVEL:-info}
     depends_on:
       postgres:
         condition: service_healthy
@@ -127,18 +98,14 @@ services:
     networks:
       - internal
 
-  # ── R Worker ────────────────────────────────────────────────────
   r-worker:
-    image: bio-platform-rworker:latest
-    build:
-      context: https://github.com/4snt/bio-platform.git#master:r-worker
-      dockerfile: Dockerfile
+    image: ghcr.io/4snt/bio-platform-rworker:latest
     restart: unless-stopped
     environment:
       POSTGRES_HOST:     postgres
       POSTGRES_PORT:     5432
       POSTGRES_DB:       ${POSTGRES_DB:-bioinformatica}
-      POSTGRES_USER:     ${POSTGRES_USER:-r_worker}
+      POSTGRES_USER:     ${POSTGRES_USER:-api_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
       ES_HOST:           http://elasticsearch:9200
       MINIO_ENDPOINT:    minio:9000
@@ -154,42 +121,30 @@ services:
     networks:
       - internal
 
-  # ── Frontend Next.js ────────────────────────────────────────────
   frontend:
-    image: bio-platform-frontend:latest
-    build:
-      context: https://github.com/4snt/bio-platform.git#master:frontend
-      dockerfile: Dockerfile
-      args:
-        # ATENÇÃO: estas variáveis ficam embutidas no bundle JS — devem ser
-        # as URLs PÚBLICAS que o browser do usuário vai usar para chamar a API
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8005}
-        NEXT_PUBLIC_WS_URL:  ${NEXT_PUBLIC_WS_URL:-ws://localhost:8005}
+    image: ghcr.io/4snt/bio-platform-frontend:latest
     restart: unless-stopped
     ports:
       - "${FRONTEND_PORT:-3005}:3000"
     environment:
-      NODE_ENV:       production
-      NEXTAUTH_URL:   ${NEXTAUTH_URL:-http://localhost:3005}
-      AUTH_SECRET:    ${AUTH_SECRET}
-      NEXTAUTH_SECRET: ${AUTH_SECRET}
-      GOOGLE_CLIENT_ID:     ${GOOGLE_CLIENT_ID}
+      NODE_ENV:            production
+      NEXTAUTH_URL:        ${NEXTAUTH_URL:-http://localhost:3005}
+      AUTH_SECRET:         ${AUTH_SECRET}
+      NEXTAUTH_SECRET:     ${AUTH_SECRET}
+      GOOGLE_CLIENT_ID:    ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      # URL interna — usada pelo NextAuth no servidor para chamar a API (sem passar pelo browser)
-      API_URL: http://api:8000
+      API_URL:             http://api:8000
     depends_on:
       api:
         condition: service_healthy
     networks:
       - internal
 
-# ── Volumes persistentes ────────────────────────────────────────
 volumes:
   pg_data:
   es_data:
   minio_data:
 
-# ── Rede interna (serviços se comunicam pelo nome do serviço) ───
 networks:
   internal:
     driver: bridge
