@@ -27,6 +27,9 @@ jobs:
           - service: frontend
             context: frontend
             image: bio-platform-frontend
+            build_args: |
+              NEXT_PUBLIC_API_URL=https://bioapi.flipafile.com
+              NEXT_PUBLIC_WS_URL=wss://bioapi.flipafile.com
           - service: postgres
             context: db
             image: bio-platform-postgres
@@ -47,3 +50,4 @@ jobs:
           context: ${{ matrix.context }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:latest
+          build-args: ${{ matrix.build_args }}
