@@ -18,6 +18,12 @@ class Settings(BaseSettings):
 
     log_level: str = "info"
 
+    google_client_id: str = ""
+    jwt_secret: str = "change-me-in-production"
+    jwt_access_minutes: int = 60
+    jwt_refresh_days: int = 7
+    allowed_email_domain: str = "@ufvjm.edu.br"
+
     @property
     def postgres_dsn(self) -> str:
         return (
