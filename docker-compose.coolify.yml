@@ -22,6 +22,7 @@ services:
 
   # ── Banco de dados ──────────────────────────────────────────────
   postgres:
+    image: bio-platform-postgres:latest
     build:
       context: https://github.com/4snt/bio-platform.git#master:db
       dockerfile: Dockerfile
@@ -80,6 +81,7 @@ services:
 
   # ── FastAPI ─────────────────────────────────────────────────────
   api:
+    image: bio-platform-api:latest
     build:
       context: https://github.com/4snt/bio-platform.git#master:api
       dockerfile: Dockerfile
@@ -127,6 +129,7 @@ services:
 
   # ── R Worker ────────────────────────────────────────────────────
   r-worker:
+    image: bio-platform-rworker:latest
     build:
       context: https://github.com/4snt/bio-platform.git#master:r-worker
       dockerfile: Dockerfile
@@ -153,6 +156,7 @@ services:
 
   # ── Frontend Next.js ────────────────────────────────────────────
   frontend:
+    image: bio-platform-frontend:latest
     build:
       context: https://github.com/4snt/bio-platform.git#master:frontend
       dockerfile: Dockerfile
