@@ -67,6 +67,8 @@ services:
   r-worker:
     build: ./r-worker
     env_file: .env
+    volumes:
+      - ./r-worker:/worker
     depends_on:
       postgres:
         condition: service_healthy

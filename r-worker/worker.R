@@ -14,10 +14,21 @@ con <- pg_connect()
 DBI::dbExecute(con, "LISTEN new_job")
 message("[worker] Aguardando jobs...")
 
+# Análises que exigem phyloseq_key no payload
+NEEDS_PHYLOSEQ <- c("deseq2", "ancombc2", "maaslin2", "spieceasi", "random_forest", "gsea", "funguild", "picrust2")
+
 process_job <- function(job) {
   job_id   <- job$id
   job_type <- job$job_type
   payload  <- jsonlite::fromJSON(job$payload)
+
+  # Valida payload antes de rodar
+  if (job_type %in% NEEDS_PHYLOSEQ && (is.null(payload$phyloseq_key) || nchar(payload$phyloseq_key) == 0)) {
+    pg_set_status(con, job_id, "failed",
+      error_msg = paste0("payload inválido: 'phyloseq_key' é obrigatório para análise '", job_type, "'"))
+    message(sprintf("[worker] Job %s rejeitado — phyloseq_key ausente", job_id))
+    return(invisible(NULL))
+  }
 
   message(sprintf("[worker] Iniciando job %s — tipo: %s", job_id, job_type))
   pg_set_status(con, job_id, "running")
