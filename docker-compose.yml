@@ -1,5 +1,3 @@
-version: "3.9"
-
 services:
   postgres:
     image: postgres:16
@@ -12,6 +10,11 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./db/migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U api_user -d bioinformatica"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   elasticsearch:
     image: elasticsearch:8.13.0
@@ -23,6 +26,11 @@ services:
       - "9200:9200"
     volumes:
       - es_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
 
   minio:
     image: minio/minio
@@ -35,6 +43,11 @@ services:
       - "9001:9001"
     volumes:
       - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   api:
     build: ./api
@@ -42,9 +55,12 @@ services:
       - "8000:8000"
     env_file: .env
     depends_on:
-      - postgres
-      - elasticsearch
-      - minio
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     volumes:
       - ./api:/app
 
@@ -52,9 +68,12 @@ services:
     build: ./r-worker
     env_file: .env
     depends_on:
-      - postgres
-      - elasticsearch
-      - minio
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
 
 volumes:
   pg_data:
