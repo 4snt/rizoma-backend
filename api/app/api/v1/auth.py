@@ -43,16 +43,8 @@ class MeResponse(BaseModel):
 
 @router.post("/google", response_model=TokenResponse)
 async def login_with_google(body: GoogleLoginRequest):
-    """Exchange a Google id_token for a platform JWT.
-
-    Flow:
-    1. Validate the Google id_token.
-    2. Enforce @ufvjm.edu.br domain.
-    3. Bootstrap: if users table is empty, promote first user to admin.
-    4. Otherwise, require a pending invite in invited_users.
-    5. Upsert the user row and mark the invite as used.
-    6. Return a signed JWT.
-    """
+    """Exchange a Google id_token for a platform JWT."""
+    print("AUTH ENTER: token_len=%d" % len(body.access_token), flush=True)
     # Step 1 — validate with Google
     try:
         claims = await verify_google_token(body.access_token, settings.google_client_id)
