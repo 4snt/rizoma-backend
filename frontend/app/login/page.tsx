@@ -34,7 +34,6 @@ function ErrorMessage({ error }: { error: string | null }) {
 function LoginContent() {
   const params = useSearchParams()
   const error  = params.get("error")
-  const router = useRouter()
 
   const handleSignIn = () => {
     signIn("google", { callbackUrl: "/" })
