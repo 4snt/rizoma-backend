@@ -44,7 +44,8 @@ class MeResponse(BaseModel):
 @router.post("/google", response_model=TokenResponse)
 async def login_with_google(body: GoogleLoginRequest):
     """Exchange a Google id_token for a platform JWT."""
-    print("AUTH ENTER: token_len=%d" % len(body.access_token), flush=True)
+    import logging as _log
+    _log.getLogger("uvicorn.error").warning("AUTH ENTER token_len=%d", len(body.access_token))
     # Step 1 — validate with Google
     try:
         claims = await verify_google_token(body.access_token, settings.google_client_id)
@@ -59,11 +60,10 @@ async def login_with_google(body: GoogleLoginRequest):
     google_sub: str = claims.get("sub", "")
 
     # Step 2 — domain check
-    print(f"AUTH DEBUG: email={email!r} domain={settings.allowed_email_domain!r} match={email.endswith(settings.allowed_email_domain)}", flush=True)
     if not email.endswith(settings.allowed_email_domain):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Apenas contas {settings.allowed_email_domain} são permitidas.",
+            detail=f"[DBG] domain: email={email!r} required={settings.allowed_email_domain!r}",
         )
 
     pool = get_pool()
@@ -95,7 +95,7 @@ async def login_with_google(body: GoogleLoginRequest):
                 if invite is None:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail="Acesso negado. Solicite um convite ao administrador.",
+                        detail=f"[DBG] no-invite: email={email!r} existing={existing_user is not None}",
                     )
                 role = invite["role"]
 
@@ -119,7 +119,7 @@ async def login_with_google(body: GoogleLoginRequest):
         if not user["is_active"]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Conta desativada. Contate o administrador.",
+                detail=f"[DBG] inactive: email={email!r}",
             )
 
         # Step 6 — mark invite as used (only for new users arriving via invite)
