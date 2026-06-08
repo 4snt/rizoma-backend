@@ -1,7 +1,6 @@
 'use client'
 
 import { signIn } from "next-auth/react"
-import { useRouter } from "next/navigation"
 import { useSearchParams } from "next/navigation"
 import { Suspense } from "react"
 
@@ -38,29 +37,7 @@ function LoginContent() {
   const router = useRouter()
 
   const handleSignIn = () => {
-    const w    = 500
-    const h    = 620
-    const left = Math.round(window.screenX + (window.outerWidth  - w) / 2)
-    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2)
-
-    const popup = window.open(
-      "/api/auth/signin/google",
-      "google-signin",
-      `width=${w},height=${h},left=${left},top=${top},toolbar=0,menubar=0,location=0,scrollbars=0`,
-    )
-
-    // Popup bloqueado pelo browser — faz redirect normal
-    if (!popup || popup.closed) {
-      signIn("google", { callbackUrl: "/" })
-      return
-    }
-
-    const timer = setInterval(() => {
-      if (popup.closed) {
-        clearInterval(timer)
-        router.push("/")
-      }
-    }, 500)
+    signIn("google", { callbackUrl: "/" })
   }
 
   return (
