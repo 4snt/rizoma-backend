@@ -19,11 +19,11 @@ jobs:
       matrix:
         include:
           - service: api
-            context: .
+            context: api
             dockerfile: api/Dockerfile
             image: bio-platform-api
           - service: r-worker
-            context: .
+            context: r-worker
             dockerfile: r-worker/Dockerfile
             image: bio-platform-rworker
           - service: postgres
@@ -31,7 +31,7 @@ jobs:
             dockerfile: db/Dockerfile
             image: bio-platform-postgres
           - service: frontend
-            context: .
+            context: frontend
             dockerfile: frontend/Dockerfile
             image: bio-platform-frontend
             build_args: |
