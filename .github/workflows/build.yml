@@ -20,11 +20,11 @@ jobs:
         include:
           - service: api
             context: api
-            dockerfile: Dockerfile
+            dockerfile: api/Dockerfile
             image: bio-platform-api
           - service: r-worker
             context: r-worker
-            dockerfile: Dockerfile
+            dockerfile: r-worker/Dockerfile
             image: bio-platform-rworker
           - service: postgres
             context: .
@@ -32,7 +32,7 @@ jobs:
             image: bio-platform-postgres
           - service: frontend
             context: frontend
-            dockerfile: Dockerfile
+            dockerfile: frontend/Dockerfile
             image: bio-platform-frontend
             build_args: |
               NEXT_PUBLIC_API_URL=https://bioapi.flipafile.com
