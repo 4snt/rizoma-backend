@@ -1,6 +1,6 @@
 -- Views analíticas
 
-CREATE VIEW v_pending_jobs AS
+CREATE OR REPLACE VIEW v_pending_jobs AS
 SELECT
     j.id,
     j.project_id,
@@ -13,7 +13,7 @@ JOIN projects p ON p.id = j.project_id
 WHERE j.status = 'queued'
 ORDER BY j.created_at;
 
-CREATE VIEW v_analysis_summary AS
+CREATE OR REPLACE VIEW v_analysis_summary AS
 SELECT
     p.code AS project_code,
     r.analysis_type,
@@ -24,7 +24,7 @@ JOIN pipeline_jobs j ON j.id = r.job_id
 JOIN projects p ON p.id = j.project_id
 GROUP BY p.code, r.analysis_type;
 
-CREATE VIEW v_keystone_taxa AS
+CREATE OR REPLACE VIEW v_keystone_taxa AS
 SELECT
     n.taxa_source AS taxon,
     AVG(n.keystone_score) AS avg_keystone_score,
@@ -33,7 +33,7 @@ FROM network_edges n
 GROUP BY n.taxa_source
 ORDER BY avg_keystone_score DESC;
 
-CREATE VIEW v_cross_project AS
+CREATE OR REPLACE VIEW v_cross_project AS
 SELECT
     p.code AS project_code,
     r.analysis_type,

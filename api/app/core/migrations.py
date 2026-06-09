@@ -29,16 +29,19 @@ async def run_migrations():
         # Get list of applied migrations
         applied = await conn.fetch("SELECT filename FROM schema_migrations")
         applied_set = {r["filename"] for r in applied}
+        logger.info(f"Already applied migrations: {len(applied_set)}")
         
         # List all SQL files in the migrations directory
         if not os.path.exists(MIGRATIONS_DIR):
-            logger.warning(f"Migrations directory not found: {MIGRATIONS_DIR}")
+            logger.error(f"Migrations directory NOT FOUND: {os.path.abspath(MIGRATIONS_DIR)}")
             return
             
         files = sorted([f for f in os.listdir(MIGRATIONS_DIR) if f.endswith(".sql")])
+        logger.info(f"Found {len(files)} migration files in {MIGRATIONS_DIR}")
         
         for filename in files:
             if filename in applied_set:
+                logger.debug(f"Skipping already applied migration: {filename}")
                 continue
                 
             logger.info(f"Applying migration: {filename}")
@@ -46,6 +49,10 @@ async def run_migrations():
             
             with open(file_path, "r") as f:
                 sql = f.read()
+            
+            if not sql.strip():
+                logger.warning(f"Migration file {filename} is empty, skipping.")
+                continue
                 
             # Execute the migration in a transaction
             async with conn.transaction():
@@ -57,7 +64,7 @@ async def run_migrations():
                     )
                     logger.info(f"Successfully applied {filename}")
                 except Exception as e:
-                    logger.error(f"Error applying migration {filename}: {e}")
+                    logger.error(f"FATAL: Error applying migration {filename}: {e}")
                     # Re-raise to stop startup if a migration fails
                     raise e
 
