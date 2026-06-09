@@ -20,15 +20,19 @@ jobs:
         include:
           - service: api
             context: api
+            dockerfile: api/Dockerfile
             image: bio-platform-api
           - service: r-worker
             context: r-worker
+            dockerfile: r-worker/Dockerfile
             image: bio-platform-rworker
           - service: postgres
-            context: db
+            context: .
+            dockerfile: db/Dockerfile
             image: bio-platform-postgres
           - service: frontend
             context: frontend
+            dockerfile: frontend/Dockerfile
             image: bio-platform-frontend
             build_args: |
               NEXT_PUBLIC_API_URL=https://bioapi.flipafile.com
@@ -60,6 +64,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ matrix.image }}:latest
           build-args: ${{ matrix.build_args }}

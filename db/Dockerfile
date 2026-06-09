@@ -1,2 +1,2 @@
 FROM postgres:16
-COPY migrations/ /docker-entrypoint-initdb.d/
+COPY api/app/migrations/ /docker-entrypoint-initdb.d/
