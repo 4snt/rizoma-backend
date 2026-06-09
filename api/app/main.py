@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from app.core.database import init_db_pool, close_db_pool
+from app.core.migrations import run_migrations
 from app.core.elasticsearch import init_es_client, close_es_client
 from app.api.v1 import projects, samples, jobs, analysis, worker, auth, admin
 from app.core.config import settings
@@ -11,6 +12,7 @@ from app.core.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db_pool()
+    await run_migrations()
     await init_es_client()
     yield
     await close_db_pool()

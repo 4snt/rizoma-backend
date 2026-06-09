@@ -100,9 +100,12 @@ A API sobe em `http://localhost:8000`. Docs interativos em `/docs`.
 Primeira vez — as migrations rodam automaticamente via `docker-entrypoint-initdb.d`:
 
 ```
-db/migrations/001_init.sql        → tabelas base (projects, samples)
-db/migrations/002_jobs_queue.sql  → fila + trigger NOTIFY + analysis_results
-db/migrations/003_views_roles.sql → views analíticas + roles PG
+api/app/migrations/001_init.sql        → tabelas base (projects, samples)
+api/app/migrations/002_jobs_queue.sql  → fila + trigger NOTIFY + analysis_results
+api/app/migrations/003_views_roles.sql → views analíticas + roles PG
+...
+A API agora gerencia as migrações automaticamente no startup via `app/core/migrations.py`.
+As migrações são lidas de `api/app/migrations/` e aplicadas se ainda não existirem na tabela `schema_migrations`.
 ```
 
 ---
@@ -113,7 +116,8 @@ db/migrations/003_views_roles.sql → views analíticas + roles PG
 bio-platform/
 ├── api/
 │   └── app/
-│       ├── core/           → config, pool PG, cliente ES, cliente MinIO
+│       ├── core/           → config, pool PG, migrations runner
+│       ├── migrations/     → SQL files applied on startup
 │       ├── domain/         → entidades e VOs por Bounded Context
 │       │   ├── shared/     → MarkerType, ProjectCode, AnalysisId
 │       │   ├── sample/     → Project, Sample, SampleParser, TreatmentGroup
@@ -127,7 +131,6 @@ bio-platform/
 │   ├── worker.R            → loop LISTEN/NOTIFY
 │   ├── analyses/           → um arquivo .R por tipo de análise
 │   └── utils/              → pg_helpers.R, es_helpers.R, minio_helpers.R
-├── db/migrations/
 └── infra/manifests/        → deployments k3s por nó
 ```
 

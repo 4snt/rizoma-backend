@@ -74,7 +74,7 @@ Todos os serviços ficam dentro deste projeto, compartilhando a mesma rede Docke
 
 Após criar, copie a **Internal URL** (ex: `postgresql://api_user:xxx@bio-postgres:5432/bioinformatica`).
 
-> As migrations rodam automaticamente via `docker-entrypoint-initdb.d`. Configure o volume mount para `./db/migrations:/docker-entrypoint-initdb.d` no serviço.
+> As migrations agora rodam automaticamente pela API no startup. O volume mount para `docker-entrypoint-initdb.d` ainda é recomendado para o primeiro boot, apontando para `./api/app/migrations`.
 
 ### 4.2 Elasticsearch (Database)
 
