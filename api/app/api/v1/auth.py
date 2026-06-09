@@ -33,6 +33,7 @@ class MeResponse(BaseModel):
     email: str
     name: str
     role: str
+    avatar_url: str | None
     last_login: str | None
 
 
@@ -97,21 +98,25 @@ async def login_with_google(body: GoogleLoginRequest):
                     )
                 role = invite["role"]
 
+        avatar_url: str | None = claims.get("picture")
+
         # Step 5 — upsert user
         user = await conn.fetchrow(
             """
-            INSERT INTO users (email, name, google_sub, role, last_login)
-            VALUES ($1, $2, $3, $4, NOW())
+            INSERT INTO users (email, name, google_sub, role, avatar_url, last_login)
+            VALUES ($1, $2, $3, $4, $5, NOW())
             ON CONFLICT (email) DO UPDATE
                 SET google_sub  = EXCLUDED.google_sub,
                     name        = EXCLUDED.name,
+                    avatar_url  = EXCLUDED.avatar_url,
                     last_login  = NOW()
-            RETURNING id, email, name, role, is_active
+            RETURNING id, email, name, role, avatar_url, is_active
             """,
             email,
             name,
             google_sub,
             role,
+            avatar_url,
         )
 
         if not user["is_active"]:
@@ -155,7 +160,7 @@ async def get_me(current_user: dict = Depends(get_current_user)):
     async with pool.acquire() as conn:
         user = await conn.fetchrow(
             """
-            SELECT id, email, name, role, last_login
+            SELECT id, email, name, role, avatar_url, last_login
             FROM users
             WHERE id = $1
               AND is_active = TRUE
@@ -174,5 +179,6 @@ async def get_me(current_user: dict = Depends(get_current_user)):
         email=user["email"],
         name=user["name"],
         role=user["role"],
+        avatar_url=user["avatar_url"],
         last_login=user["last_login"].isoformat() if user["last_login"] else None,
     )

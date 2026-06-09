@@ -37,7 +37,7 @@ async def list_users(_admin: dict = Depends(require_admin)):
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT id, email, name, role, is_active, last_login
+            SELECT id, email, name, role, is_active, avatar_url, last_login
             FROM users
             ORDER BY created_at DESC
             """
@@ -49,6 +49,7 @@ async def list_users(_admin: dict = Depends(require_admin)):
             "name": r["name"],
             "role": r["role"],
             "is_active": r["is_active"],
+            "avatar_url": r["avatar_url"],
             "last_login": r["last_login"].isoformat() if r["last_login"] else None,
         }
         for r in rows
