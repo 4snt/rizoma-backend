@@ -1,4 +1,4 @@
-CREATE TABLE pipeline_jobs (
+CREATE TABLE IF NOT EXISTS pipeline_jobs (
     id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id   UUID        NOT NULL REFERENCES projects(id),
     job_type     VARCHAR(50) NOT NULL,
@@ -11,10 +11,10 @@ CREATE TABLE pipeline_jobs (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_pipeline_jobs_status ON pipeline_jobs(status) WHERE status = 'queued';
-CREATE INDEX idx_pipeline_jobs_project ON pipeline_jobs(project_id);
+CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_status ON pipeline_jobs(status) WHERE status = 'queued';
+CREATE INDEX IF NOT EXISTS idx_pipeline_jobs_project ON pipeline_jobs(project_id);
 
-CREATE TABLE analysis_results (
+CREATE TABLE IF NOT EXISTS analysis_results (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id        UUID        NOT NULL REFERENCES pipeline_jobs(id),
     analysis_type VARCHAR(50) NOT NULL,
@@ -23,7 +23,7 @@ CREATE TABLE analysis_results (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE network_edges (
+CREATE TABLE IF NOT EXISTS network_edges (
     id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     job_id         UUID    NOT NULL REFERENCES pipeline_jobs(id),
     taxa_source    TEXT    NOT NULL,
@@ -42,6 +42,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_notify_new_job ON pipeline_jobs;
 CREATE TRIGGER trg_notify_new_job
 AFTER INSERT ON pipeline_jobs
 FOR EACH ROW

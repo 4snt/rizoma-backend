@@ -1,6 +1,6 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-CREATE TABLE projects (
+CREATE TABLE IF NOT EXISTS projects (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     code        VARCHAR(50)  NOT NULL UNIQUE,
     name        VARCHAR(255) NOT NULL,
@@ -9,7 +9,7 @@ CREATE TABLE projects (
     created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE samples (
+CREATE TABLE IF NOT EXISTS samples (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id      UUID         NOT NULL REFERENCES projects(id),
     filename        VARCHAR(255) NOT NULL,
