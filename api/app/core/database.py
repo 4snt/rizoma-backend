@@ -20,6 +20,8 @@ async def init_db_pool() -> None:
             await conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';")
             await conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL;")
             await conn.execute("ALTER TABLE projects ADD COLUMN IF NOT EXISTS bioproject_accession VARCHAR(20);")
+            await conn.execute("ALTER TABLE samples DROP COLUMN IF EXISTS fastq_r1_key_old;")
+            await conn.execute("ALTER TABLE samples DROP COLUMN IF EXISTS fastq_r2_key_old;")
             print(">>> [database] Emergency repair complete.", flush=True)
     except Exception as e:
         print(f"!!! [database] Emergency repair failed (this might be normal if columns exist): {e}", flush=True)
