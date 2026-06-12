@@ -3,6 +3,9 @@ kind: Deployment
 metadata:
   name: bio-api
   namespace: bioinformatica
+  labels:
+    app: bio-api
+    app.kubernetes.io/part-of: bio-platform
 spec:
   replicas: 1
   selector:
@@ -13,16 +16,19 @@ spec:
       labels:
         app: bio-api
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: agent-2
+      # K8s SA vinculado ao GCP SA via Workload Identity (criada pelo Terraform)
+      serviceAccountName: rizoma-workload
+
       containers:
         - name: bio-api
-          image: ghcr.io/org/bio-api:latest
+          # AR URL: southamerica-east1-docker.pkg.dev/PROJECT/bio-platform/bio-platform-api:latest
+          # Substituído pelo CI via envsubst ou kustomize
+          image: IMAGE_PLACEHOLDER_API
           ports:
             - containerPort: 8000
           envFrom:
             - secretRef:
-                name: bio-platform-secrets
+                name: bio-secrets   # criado pelo comando em `terraform output create_k8s_secret_command`
           resources:
             requests:
               cpu: "200m"
@@ -30,15 +36,42 @@ spec:
             limits:
               cpu: "1000m"
               memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: bio-api
   namespace: bioinformatica
+  labels:
+    app: bio-api
 spec:
   selector:
     app: bio-api
   ports:
-    - port: 8000
+    - name: http
+      port: 8000
       targetPort: 8000
+  type: ClusterIP
+
+---
+# K8s ServiceAccount — vinculada ao GCP SA no Terraform (iam.tf)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rizoma-workload
+  namespace: bioinformatica
+  annotations:
+    iam.gke.io/gcp-service-account: rizoma-workload@PROJECT_ID.iam.gserviceaccount.com

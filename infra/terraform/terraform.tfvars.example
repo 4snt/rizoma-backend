@@ -1,0 +1,25 @@
+# Copie para terraform.tfvars e preencha (não commite terraform.tfvars)
+
+project_id   = "SEU_PROJETO_GCP"
+region       = "southamerica-east1"
+zone         = "southamerica-east1-c"
+cluster_name = "rizoma"
+namespace    = "bioinformatica"
+
+# Cloud SQL
+db_instance_name = "rizoma-pg"
+db_name          = "bioinformatica"
+db_tier          = "db-custom-2-4096"   # 2 vCPU, 4 GB RAM
+db_disk_gb       = 30
+
+# Artifact Registry
+ar_repository = "bio-platform"
+
+# GitHub Workload Identity
+github_org  = "4snt"          # organização ou usuário do GitHub
+github_repo = "bio-platform"
+
+# App
+allowed_email_domain = "@ufvjm.edu.br"
+cors_origins         = "https://rizoma.vercel.app"
+api_external_domain  = "bioapi.seu-dominio.com"
