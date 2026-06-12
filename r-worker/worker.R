@@ -10,13 +10,14 @@ source("analyses/random_forest.R")
 source("analyses/gsea.R")
 source("analyses/funguild.R")
 source("analyses/picrust2.R")
+source("analyses/metagenomics.R")
 
 con <- pg_connect()
 DBI::dbExecute(con, "LISTEN new_job")
 message("[worker] Aguardando jobs...")
 
 # Análises que exigem phyloseq_oid na coluna pipeline_jobs
-NEEDS_PHYLOSEQ <- c("deseq2", "ancombc2", "maaslin2", "spieceasi", "random_forest", "gsea", "funguild", "picrust2")
+NEEDS_PHYLOSEQ <- c("deseq2", "ancombc2", "maaslin2", "spieceasi", "random_forest", "gsea", "funguild", "picrust2", "metagenomics_pipeline")
 
 process_job <- function(job) {
   job_id   <- job$id
@@ -39,18 +40,22 @@ process_job <- function(job) {
 
   tryCatch({
     result <- switch(job_type,
-      "deseq2"        = run_deseq2(payload, con),
-      "ancombc2"      = run_ancombc(payload, con),
-      "maaslin2"      = run_maaslin2(payload, con),
-      "spieceasi"     = run_spieceasi(payload, con),
-      "random_forest" = run_random_forest(payload, con),
-      "gsea"          = run_gsea(payload, con),
-      "funguild"      = run_funguild(payload, con),
-      "picrust2"      = run_picrust2(payload, con),
+      "deseq2"                = run_deseq2(payload, con),
+      "ancombc2"              = run_ancombc(payload, con),
+      "maaslin2"              = run_maaslin2(payload, con),
+      "spieceasi"             = run_spieceasi(payload, con),
+      "random_forest"         = run_random_forest(payload, con),
+      "gsea"                  = run_gsea(payload, con),
+      "funguild"              = run_funguild(payload, con),
+      "picrust2"              = run_picrust2(payload, con),
+      "metagenomics_pipeline" = run_metagenomics(payload, con),
       stop(paste("Tipo de job desconhecido:", job_type))
     )
 
-    pg_save_result(con, job_id, job_type, result)
+    # metagenomics_pipeline salva seus próprios sub-resultados e retorna NULL
+    if (!is.null(result)) {
+      pg_save_result(con, job_id, job_type, result)
+    }
     pg_set_status(con, job_id, "done")
     message(sprintf("[worker] Job %s concluído.", job_id))
 

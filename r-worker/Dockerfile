@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Pacotes CRAN
-RUN Rscript -e "install.packages(c('RPostgres','DBI','jsonlite','aws.s3','elastic','randomForest'), repos='https://cloud.r-project.org', quiet=TRUE)"
+RUN Rscript -e "install.packages(c('RPostgres','DBI','jsonlite','aws.s3','elastic','randomForest','vegan'), repos='https://cloud.r-project.org', quiet=TRUE)"
 
 # Pacotes Bioconductor — DESeq2 e phyloseq são core, os demais adicionais
 RUN Rscript -e "BiocManager::install(c('DESeq2','phyloseq','ANCOMBC','Maaslin2','clusterProfiler','SpiecEasi'), ask=FALSE, update=FALSE)"
