@@ -11,6 +11,8 @@ repo = PgJobRepository()
 VALID_JOB_TYPES = {
     "deseq2", "ancombc2", "maaslin2", "spieceasi",
     "random_forest", "gsea", "funguild", "picrust2",
+    "dada2_pipeline",          # gera phyloseq .rds a partir dos FASTQs do projeto
+    "metagenomics_pipeline",   # vegan + ANCOM-BC sobre um phyloseq existente
 }
 
 

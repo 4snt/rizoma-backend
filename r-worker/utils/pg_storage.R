@@ -7,6 +7,13 @@ pg_download_rds <- function(conn, oid, local_path = tempfile(fileext = ".rds")) 
   readRDS(local_path)
 }
 
+# Baixa um Large Object binário (ex.: FASTQ .gz) para um arquivo local
+pg_download_binary <- function(conn, oid, dest_path) {
+  result <- dbGetQuery(conn, sprintf("SELECT lo_get(%s)", oid))
+  writeBin(result[[1]][[1]], dest_path)
+  invisible(dest_path)
+}
+
 pg_upload_rds <- function(conn, obj) {
   tmp <- tempfile(fileext = ".rds")
   saveRDS(obj, tmp)

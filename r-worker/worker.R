@@ -11,13 +11,17 @@ source("analyses/gsea.R")
 source("analyses/funguild.R")
 source("analyses/picrust2.R")
 source("analyses/metagenomics.R")
+source("analyses/dada2_silva.R")
 
 con <- pg_connect()
 DBI::dbExecute(con, "LISTEN new_job")
 message("[worker] Aguardando jobs...")
 
 # Análises que exigem phyloseq_oid na coluna pipeline_jobs
-NEEDS_PHYLOSEQ <- c("deseq2", "ancombc2", "maaslin2", "spieceasi", "random_forest", "gsea", "funguild", "picrust2", "metagenomics_pipeline")
+NEEDS_PHYLOSEQ <- c("deseq2", "ancombc2", "maaslin2", "spieceasi",
+                    "random_forest", "gsea", "funguild", "picrust2",
+                    "metagenomics_pipeline")
+# dada2_pipeline gera o phyloseq — não exige um como entrada
 
 process_job <- function(job) {
   job_id   <- job$id
@@ -34,6 +38,9 @@ process_job <- function(job) {
     return(invisible(NULL))
   }
   payload$phyloseq_oid <- phyloseq_oid
+  # Sempre disponíveis para todas as análises que precisem
+  payload$job_id      <- job_id
+  payload$project_id  <- as.character(job$project_id)
 
   message(sprintf("[worker] Iniciando job %s — tipo: %s", job_id, job_type))
   pg_set_status(con, job_id, "running")
@@ -49,6 +56,7 @@ process_job <- function(job) {
       "funguild"              = run_funguild(payload, con),
       "picrust2"              = run_picrust2(payload, con),
       "metagenomics_pipeline" = run_metagenomics(payload, con),
+      "dada2_pipeline"        = run_dada2_silva(payload, con),
       stop(paste("Tipo de job desconhecido:", job_type))
     )
 
