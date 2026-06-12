@@ -35,8 +35,8 @@ jobs:
             dockerfile: frontend/Dockerfile
             image: bio-platform-frontend
             build_args: |
-              NEXT_PUBLIC_API_URL=https://bioapi.flipafile.com
-              NEXT_PUBLIC_WS_URL=wss://bioapi.flipafile.com
+              NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+              NEXT_PUBLIC_WS_URL=${{ vars.NEXT_PUBLIC_WS_URL }}
 
     steps:
       - uses: actions/checkout@v4
