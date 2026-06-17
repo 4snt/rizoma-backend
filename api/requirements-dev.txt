@@ -1,0 +1,6 @@
+# Dependências de desenvolvimento/teste (instale com: pip install -r requirements-dev.txt)
+-r requirements.txt
+
+pytest-cov==5.0.0      # cobertura: pytest --cov=app
+bandit==1.7.9          # análise estática de segurança: bandit -r app
+locust==2.31.1         # testes de carga/estresse: locust -f ../load/locustfile.py
