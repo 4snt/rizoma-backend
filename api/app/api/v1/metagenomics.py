@@ -7,7 +7,7 @@ from app.core.database import get_pool
 
 router = APIRouter()
 
-TaxLevel = Literal["phylum", "class", "order", "family", "genus", "species"]
+TaxLevel = Literal["domain", "phylum", "class", "order", "family", "genus", "species"]
 BetaMetric = Literal["bray", "jaccard", "unifrac"]
 
 
@@ -128,6 +128,59 @@ async def get_asv_table(
         "sample_names": sample_names,
         "rows": result_rows,
         "available_levels": data.get("available_levels", ["phylum", "class", "order", "family", "genus"]),
+        "total_asvs": len(rows),
+    }
+
+
+@router.get("/{project_id}/asv-table/full")
+async def get_asv_table_full(project_id: UUID):
+    """Tabela com todos os níveis taxonômicos como colunas + contagens e abundância relativa (%) por amostra."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await _latest_result(conn, project_id, "asv_table")
+    if not row:
+        raise HTTPException(status_code=404, detail="Nenhuma análise metagenômica concluída")
+
+    data = _parse_result(row)
+    rows = data.get("rows", [])
+    sample_names = data.get("sample_names", [])
+
+    TAX_LEVELS = ["domain", "phylum", "class", "order", "family", "genus", "species"]
+
+    # Per-sample totals (from raw ASV rows)
+    sample_totals: dict[str, float] = {s: 0.0 for s in sample_names}
+    for r in rows:
+        for s in sample_names:
+            sample_totals[s] += float((r.get("samples") or {}).get(s, 0) or 0)
+
+    # Aggregate ASVs sharing the same full lineage path
+    aggregated: dict[str, dict] = {}
+    for r in rows:
+        tax = r.get("taxonomy") or {}
+        lineage = {lvl: (tax.get(lvl) or "Unclassified") for lvl in TAX_LEVELS}
+        key = "|".join(lineage.values())
+
+        if key not in aggregated:
+            aggregated[key] = {**lineage, "samples": {s: 0 for s in sample_names}, "total": 0}
+
+        for s in sample_names:
+            count = int((r.get("samples") or {}).get(s, 0) or 0)
+            aggregated[key]["samples"][s] += count
+            aggregated[key]["total"] += count
+
+    result_rows = []
+    for lin in sorted(aggregated.values(), key=lambda x: -x["total"]):
+        rel_ab = {
+            s: round(lin["samples"][s] / sample_totals[s] * 100, 4)
+            if sample_totals.get(s, 0) > 0 else 0.0
+            for s in sample_names
+        }
+        result_rows.append({**lin, "rel_abundance": rel_ab})
+
+    return {
+        "tax_levels": TAX_LEVELS,
+        "sample_names": sample_names,
+        "rows": result_rows,
         "total_asvs": len(rows),
     }
 

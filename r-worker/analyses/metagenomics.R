@@ -58,31 +58,41 @@ run_metagenomics <- function(payload, con) {
   }
 
   # ── 3. ASV Table ──────────────────────────────────────────────────────
-  tax_levels <- c("phylum", "class", "order", "family", "genus", "species")
+  tax_levels    <- c("domain", "phylum", "class", "order", "family", "genus", "species")
+  sample_totals <- colSums(otu)
 
   asv_rows <- lapply(rownames(otu), function(asv) {
     smp_vals <- as.list(as.numeric(otu[asv, ]))
     names(smp_vals) <- smp_names
+
+    rel_abund <- setNames(
+      lapply(smp_names, function(s) {
+        tot <- sample_totals[[s]]
+        cnt <- as.numeric(otu[asv, s])
+        if (!is.na(tot) && tot > 0) round(cnt / tot * 100, 4) else 0
+      }),
+      smp_names
+    )
 
     tax_row <- if (nrow(tax_df) > 0 && asv %in% rownames(tax_df)) {
       as.list(tax_df[asv, intersect(tax_levels, colnames(tax_df)), drop = FALSE][1, ])
     } else {
       list()
     }
-    # Remove NA entries to keep JSON tidy
     tax_row <- tax_row[!sapply(tax_row, function(x) is.na(x) || x == "NA" || x == "")]
 
     list(
-      taxon   = asv,
-      taxonomy = tax_row,
-      samples  = smp_vals,
-      total    = sum(as.numeric(otu[asv, ]), na.rm = TRUE)
+      taxon         = asv,
+      taxonomy      = tax_row,
+      samples       = smp_vals,
+      rel_abundance = rel_abund,
+      total         = sum(as.numeric(otu[asv, ]), na.rm = TRUE)
     )
   })
 
   pg_save_result(con, job_id, "asv_table", list(
-    rows            = asv_rows,
-    sample_names    = smp_names,
+    rows             = asv_rows,
+    sample_names     = smp_names,
     available_levels = tax_levels
   ))
   message("[metagenomics] asv_table salvo")
