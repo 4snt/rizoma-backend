@@ -1,10 +1,18 @@
 library(dada2)
 library(phyloseq)
 
-# Parâmetros DADA2 conforme MarkerConfig em CLAUDE.md
-.dada2_params <- function(marker_type) {
+# Parâmetros DADA2 conforme MarkerConfig em CLAUDE.md.
+# Os defaults dependem do marcador; o usuário pode sobrescrever via payload
+# (campos dada2_params definidos no cadastro do projeto / aba DADA2).
+.dada2_params <- function(marker_type, payload = list()) {
+  # Helper: usa o valor do payload se presente e não-nulo, senão o default
+  p <- function(key, default) {
+    v <- payload[[key]]
+    if (is.null(v) || (length(v) == 1 && is.na(v))) default else v
+  }
+
   if (marker_type == "16S") {
-    list(
+    base <- list(
       trunc_len_f = 230L,
       trunc_len_r = 180L,
       ref_train   = "/refs/silva_nr99_v138.1_train_set.fa.gz",
@@ -13,7 +21,7 @@ library(phyloseq)
     )
   } else {                                 # ITS
     fasta <- .find_unite_fasta()
-    list(
+    base <- list(
       trunc_len_f = 0L,                    # ITS: comprimento variável, sem truncagem
       trunc_len_r = 0L,
       ref_train   = fasta,
@@ -21,6 +29,20 @@ library(phyloseq)
       label       = "UNITE"
     )
   }
+
+  list(
+    trunc_len_f    = as.integer(p("trunc_len_f", base$trunc_len_f)),
+    trunc_len_r    = as.integer(p("trunc_len_r", base$trunc_len_r)),
+    max_ee_f       = as.numeric(p("max_ee_f", 2)),
+    max_ee_r       = as.numeric(p("max_ee_r", 2)),
+    trunc_q        = as.integer(p("trunc_q", 2)),
+    max_n          = as.integer(p("max_n", 0)),
+    min_len        = as.integer(p("min_len", 50)),
+    chimera_method = as.character(p("chimera_method", "consensus")),
+    ref_train      = base$ref_train,
+    ref_species    = base$ref_species,
+    label          = base$label
+  )
 }
 
 .find_unite_fasta <- function() {
@@ -47,7 +69,7 @@ run_dada2_silva <- function(payload, con) {
     sprintf("SELECT marker_type FROM projects WHERE id = '%s'", project_id))
   if (nrow(proj) == 0) stop("Projeto não encontrado: ", project_id)
   marker_type <- proj$marker_type[1]
-  params <- .dada2_params(marker_type)
+  params <- .dada2_params(marker_type, payload)
 
   message(sprintf("[dada2] Marcador: %s — Classificador: %s", marker_type, params$label))
 
@@ -79,6 +101,7 @@ run_dada2_silva <- function(payload, con) {
   fnFs <- setNames(file.path(tmpdir, paste0(smp_names, "_R1.fastq.gz")), smp_names)
   fnRs <- setNames(file.path(tmpdir, paste0(smp_names, "_R2.fastq.gz")), smp_names)
 
+  pg_set_progress(con, job_id, 10, "Baixando FASTQs")
   for (i in seq_len(nrow(samples))) {
     pg_download_binary(con, samples$fastq_r1_oid[i], fnFs[i])
     pg_download_binary(con, samples$fastq_r2_oid[i], fnRs[i])
@@ -89,20 +112,23 @@ run_dada2_silva <- function(payload, con) {
   filtFs <- setNames(file.path(filtered_d, paste0(smp_names, "_F_filt.fastq.gz")), smp_names)
   filtRs <- setNames(file.path(filtered_d, paste0(smp_names, "_R_filt.fastq.gz")), smp_names)
 
+  pg_set_progress(con, job_id, 25, "Filtragem de qualidade (filterAndTrim)")
   message("[dada2] filterAndTrim...")
   if (params$trunc_len_f > 0) {
     out <- dada2::filterAndTrim(
       fnFs, filtFs, fnRs, filtRs,
       truncLen  = c(params$trunc_len_f, params$trunc_len_r),
-      maxN = 0, maxEE = c(2, 2), truncQ = 2, rm.phix = TRUE,
+      maxN = params$max_n, maxEE = c(params$max_ee_f, params$max_ee_r),
+      truncQ = params$trunc_q, rm.phix = TRUE,
       compress = TRUE, multithread = TRUE
     )
   } else {
     # ITS: sem truncagem, usa minLen
     out <- dada2::filterAndTrim(
       fnFs, filtFs, fnRs, filtRs,
-      maxN = 0, maxEE = c(2, 2), truncQ = 2, rm.phix = TRUE,
-      minLen = 50,
+      maxN = params$max_n, maxEE = c(params$max_ee_f, params$max_ee_r),
+      truncQ = params$trunc_q, rm.phix = TRUE,
+      minLen = params$min_len,
       compress = TRUE, multithread = TRUE
     )
   }
@@ -123,17 +149,20 @@ run_dada2_silva <- function(payload, con) {
     sum(out[, 1], na.rm = TRUE), sum(out[, 2], na.rm = TRUE)))
 
   # ── 5. Error learning ─────────────────────────────────────────────────────
+  pg_set_progress(con, job_id, 45, "Aprendendo taxas de erro")
   message("[dada2] Aprendendo taxas de erro (forward)...")
   errF <- dada2::learnErrors(filtFs, multithread = TRUE)
   message("[dada2] Aprendendo taxas de erro (reverse)...")
   errR <- dada2::learnErrors(filtRs, multithread = TRUE)
 
   # ── 6. Denoising ──────────────────────────────────────────────────────────
+  pg_set_progress(con, job_id, 65, "Inferência de ASVs (denoising)")
   message("[dada2] Denoising...")
   dadaFs <- dada2::dada(filtFs, err = errF, multithread = TRUE)
   dadaRs <- dada2::dada(filtRs, err = errR, multithread = TRUE)
 
   # ── 7. Merge paired reads ─────────────────────────────────────────────────
+  pg_set_progress(con, job_id, 80, "Mesclando pares (merge)")
   message("[dada2] Merging pares...")
   mergers <- dada2::mergePairs(dadaFs, filtFs, dadaRs, filtRs, verbose = FALSE)
 
@@ -141,14 +170,16 @@ run_dada2_silva <- function(payload, con) {
   seqtab <- dada2::makeSequenceTable(mergers)
   rownames(seqtab) <- smp_filt
 
+  pg_set_progress(con, job_id, 88, "Removendo quimeras")
   message("[dada2] Removendo quimeras...")
-  seqtab_nc <- dada2::removeBimeraDenovo(seqtab, method = "consensus", multithread = TRUE)
+  seqtab_nc <- dada2::removeBimeraDenovo(seqtab, method = params$chimera_method, multithread = TRUE)
 
   n_asvs <- ncol(seqtab_nc)
   message(sprintf("[dada2] ASVs finais: %d", n_asvs))
   if (n_asvs == 0) stop("Nenhuma ASV após remoção de quimeras.")
 
   # ── 9. Assign taxonomy ────────────────────────────────────────────────────
+  pg_set_progress(con, job_id, 95, sprintf("Classificação taxonômica (%s)", params$label))
   message(sprintf("[dada2] Classificação taxonômica (%s)...", params$label))
   taxa <- dada2::assignTaxonomy(
     seqtab_nc, params$ref_train,
@@ -188,6 +219,7 @@ run_dada2_silva <- function(payload, con) {
   # Limpeza
   unlink(tmpdir, recursive = TRUE)
 
+  pg_set_progress(con, job_id, 100, "Concluído")
   message(sprintf("[dada2] Concluído — OID=%s ASVs=%d amostras=%d",
                   oid, n_asvs, nrow(meta_df)))
 

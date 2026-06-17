@@ -31,6 +31,16 @@ pg_set_status <- function(con, job_id, status, error_msg = NULL) {
   }
 }
 
+pg_set_progress <- function(con, job_id, pct, stage = NULL) {
+  tryCatch(
+    DBI::dbExecute(con,
+      "UPDATE pipeline_jobs SET progress_pct = $1, progress_stage = $2 WHERE id = $3",
+      list(as.integer(pct), stage, job_id)
+    ),
+    error = function(e) message("[progress] falha ao gravar progresso: ", conditionMessage(e))
+  )
+}
+
 pg_save_result <- function(con, job_id, analysis_type, result_data) {
   DBI::dbExecute(con,
     "INSERT INTO analysis_results (job_id, analysis_type, result_data) VALUES ($1, $2, $3)",

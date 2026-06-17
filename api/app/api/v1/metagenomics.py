@@ -44,7 +44,7 @@ async def get_status(project_id: UUID):
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, status, created_at, completed_at, error_msg
+            SELECT id, status, created_at, completed_at, error_msg, progress_pct, progress_stage
             FROM pipeline_jobs
             WHERE project_id = $1 AND job_type = 'metagenomics_pipeline'
             ORDER BY created_at DESC
@@ -61,6 +61,37 @@ async def get_status(project_id: UUID):
         "last_job_id": str(r["id"]),
         "completed_at": r["completed_at"].isoformat() if r["completed_at"] else None,
         "error_msg": r["error_msg"],
+        "progress_pct": r["progress_pct"] or 0,
+        "progress_stage": r["progress_stage"],
+    }
+
+
+@router.get("/{project_id}/dada2-status")
+async def get_dada2_status(project_id: UUID):
+    """Status/progresso do último job dada2_pipeline (geração do phyloseq)."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, status, created_at, completed_at, error_msg, progress_pct, progress_stage, phyloseq_oid
+            FROM pipeline_jobs
+            WHERE project_id = $1 AND job_type = 'dada2_pipeline'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            project_id,
+        )
+    if not row:
+        return {"job_status": None, "last_job_id": None, "has_phyloseq": False}
+    r = dict(row)
+    return {
+        "job_status": r["status"],
+        "last_job_id": str(r["id"]),
+        "completed_at": r["completed_at"].isoformat() if r["completed_at"] else None,
+        "error_msg": r["error_msg"],
+        "progress_pct": r["progress_pct"] or 0,
+        "progress_stage": r["progress_stage"],
+        "has_phyloseq": r["phyloseq_oid"] is not None,
     }
 
 

@@ -22,6 +22,7 @@ class Project:
     author_name: str | None = None
     author_avatar_url: str | None = None
     analyses: list[ProjectAnalysis] = field(default_factory=list)
+    dada2_params: dict = field(default_factory=dict)
 
 
 @dataclass

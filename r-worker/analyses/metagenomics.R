@@ -28,6 +28,7 @@ run_metagenomics <- function(payload, con) {
   message("[metagenomics] Iniciando pipeline...")
   job_id <- payload$job_id
 
+  pg_set_progress(con, job_id, 10, "Carregando phyloseq")
   # 1. Carrega phyloseq
   ps <- pg_download_rds(con, payload$phyloseq_oid)
   n_taxa <- ntaxa(ps)
@@ -96,6 +97,7 @@ run_metagenomics <- function(payload, con) {
     available_levels = tax_levels
   ))
   message("[metagenomics] asv_table salvo")
+  pg_set_progress(con, job_id, 40, "Diversidade alfa/beta")
 
   # ── 4. Alpha diversity ────────────────────────────────────────────────
   otu_t <- t(otu)  # amostras × taxa
@@ -213,6 +215,7 @@ run_metagenomics <- function(payload, con) {
 
   pg_save_result(con, job_id, "ordination", ordinations)
   message("[metagenomics] ordination salvo")
+  pg_set_progress(con, job_id, 75, "Biomarcadores (ANCOM-BC2)")
 
   # ── 6. Biomarcadores (ANCOM-BC2) ─────────────────────────────────────
   biomarkers_result <- list(method = "none", level = "asv", markers = list(), note = "")
@@ -280,6 +283,7 @@ run_metagenomics <- function(payload, con) {
   pg_save_result(con, job_id, "biomarkers", biomarkers_result)
   message("[metagenomics] biomarkers salvo")
 
+  pg_set_progress(con, job_id, 100, "Concluído")
   message("[metagenomics] Pipeline concluído.")
   NULL  # sinaliza ao worker para não chamar pg_save_result externo
 }

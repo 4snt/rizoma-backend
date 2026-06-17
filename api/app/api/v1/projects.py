@@ -2,7 +2,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.core.auth_deps import require_admin
+from app.core.auth_deps import get_current_user
 from app.core.database import get_pool
 from app.core.ncbi_entrez import list_sra_runs as ncbi_list_sra_runs
 from app.domain.sample.entities import Project, ProjectAnalysis
@@ -22,6 +22,8 @@ def _project_dict(p: Project) -> dict:
         "marker_type":          p.marker_type,
         "status":               p.status,
         "bioproject_accession": p.bioproject_accession,
+        "created_by":           str(p.created_by) if p.created_by else None,
+        "dada2_params":         p.dada2_params or {},
         "author": {
             "name":       p.author_name,
             "avatar_url": p.author_avatar_url,
@@ -43,8 +45,15 @@ class CreateProjectRequest(BaseModel):
     name: str
     description: str = ""
     marker_type: MarkerType
-    bioproject_accession: str | None = None
     analyses: list[AnalysisConfig] = []
+    dada2_params: dict = {}
+
+
+class UpdateProjectRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    analyses: list[AnalysisConfig] | None = None
+    dada2_params: dict | None = None
 
 
 @router.get("/")
@@ -79,28 +88,66 @@ async def list_project_sra_runs(project_id: UUID):
 @router.post("/", status_code=201)
 async def create_project(
     body: CreateProjectRequest,
-    _admin: dict = Depends(require_admin),
+    user: dict = Depends(get_current_user),
 ):
     project = Project(
         code=ProjectCode(body.code),
         name=body.name,
         description=body.description,
         marker_type=body.marker_type,
-        bioproject_accession=body.bioproject_accession or None,
-        created_by=UUID(_admin["user_id"]),
+        created_by=UUID(user["user_id"]),
         analyses=[
             ProjectAnalysis(analysis_type=a.analysis_type, charts=a.charts)
             for a in body.analyses
         ],
+        dada2_params=body.dada2_params or {},
     )
     await repo.save(project)
     return {"id": str(project.id)}
 
 
+def _assert_can_edit(project: Project, user: dict) -> None:
+    """Admin ou criador do projeto podem editar/excluir."""
+    is_admin = user.get("role") == "admin"
+    is_owner = project.created_by is not None and str(project.created_by) == user["user_id"]
+    if not (is_admin or is_owner):
+        raise HTTPException(
+            status_code=403,
+            detail="Apenas o administrador ou o criador do projeto podem fazer isso.",
+        )
+
+
+@router.put("/{project_id}")
+async def update_project(
+    project_id: UUID,
+    body: UpdateProjectRequest,
+    user: dict = Depends(get_current_user),
+):
+    project = await repo.get_by_id(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    _assert_can_edit(project, user)
+
+    if body.name is not None:
+        project.name = body.name
+    if body.description is not None:
+        project.description = body.description
+    if body.analyses is not None:
+        project.analyses = [
+            ProjectAnalysis(analysis_type=a.analysis_type, charts=a.charts)
+            for a in body.analyses
+        ]
+    if body.dada2_params is not None:
+        project.dada2_params = body.dada2_params
+
+    await repo.save(project)
+    return _project_dict(project)
+
+
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
     project_id: UUID,
-    _admin: dict = Depends(require_admin),
+    user: dict = Depends(get_current_user),
 ):
     """
     Remove um projeto e todos os seus dados associados.
@@ -113,6 +160,7 @@ async def delete_project(
     project = await repo.get_by_id(project_id)
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado")
+    _assert_can_edit(project, user)
 
     pool = get_pool()
     async with pool.acquire() as conn:
