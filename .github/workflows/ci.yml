@@ -12,6 +12,54 @@ jobs:
     defaults:
       run:
         working-directory: api
+
+    services:
+      # PostGIS, não postgres puro: o schema usa geography(Point) nas amostras
+      # e eventos de custódia.
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: rizoma
+          POSTGRES_USER: api_user
+          POSTGRES_PASSWORD: changeme
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U api_user -d rizoma"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+      # bitnami/minio sobe o server sem precisar de argumento de comando (o que
+      # a imagem oficial exige e um service container não permite passar), e cria
+      # o bucket via MINIO_DEFAULT_BUCKETS.
+      minio:
+        image: bitnami/minio:latest
+        env:
+          MINIO_ROOT_USER: rizoma
+          MINIO_ROOT_PASSWORD: rizoma123
+          MINIO_DEFAULT_BUCKETS: rizoma
+        ports:
+          - 9000:9000
+
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: rizoma
+      POSTGRES_USER: api_user
+      POSTGRES_PASSWORD: changeme
+      APP_DB_USER: rizoma_app
+      APP_DB_PASSWORD: rizoma_app_pw
+      SYSTEM_DB_USER: rizoma_system
+      SYSTEM_DB_PASSWORD: rizoma_system_pw
+      S3_ENDPOINT: http://localhost:9000
+      S3_PUBLIC_ENDPOINT: http://localhost:9000
+      S3_ACCESS_KEY: rizoma
+      S3_SECRET_KEY: rizoma123
+      S3_BUCKET: rizoma
+      JWT_SECRET: ci-secret-nao-usar-em-producao
+      WORKER_TOKEN: dev-worker-token
+
     steps:
       - uses: actions/checkout@v4
 
@@ -25,7 +73,18 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-cov bandit
 
-      - name: Testes unitários e de integração (sem banco → db-gated são skip)
+      - name: Aguardar o MinIO responder
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:9000/minio/health/live; then echo "minio ok"; exit 0; fi
+            sleep 2
+          done
+          echo "MinIO não respondeu a tempo"; exit 1
+
+      - name: Aplicar migrations (Alembic cria schema + papéis rizoma_app/system)
+        run: alembic upgrade head
+
+      - name: Testes (unit + integração + mvp, contra Postgres e MinIO reais)
         run: pytest -q --cov=app --cov-report=term-missing
 
       - name: Análise de segurança (bandit)
