@@ -1,226 +1,133 @@
-# bio-platform
+# Rizoma — backend
 
-Backend da plataforma de análise de micobioma e transcriptômica — TCC de bioinformática.
+Plataforma de análise de micobioma e transcriptômica (TCC de bioinformática, UFVJM).
 
-Contém: API REST/WebSocket (FastAPI), worker de análise estatística (R/Bioconductor), migrations SQL (PostgreSQL 16) e manifests k3s.
+Este repositório contém a **API** (FastAPI), o **R Worker** (Bioconductor: ANCOM-BC2,
+MaAsLin2, DESeq2, SpiecEasi, phyloseq, vegan) e a infraestrutura de desenvolvimento.
+
+O banco é PostgreSQL 16 + PostGIS. Os arquivos (FASTQ e artefatos) ficam em object
+storage S3 (MinIO), nunca dentro do banco. A fila de jobs é o próprio Postgres
+(`LISTEN/NOTIFY` + `FOR UPDATE SKIP LOCKED`) — sem Redis, sem Celery.
 
 ---
 
-## Status de implementação
+## Subir em 3 comandos
 
-| Componente | Status | Detalhe |
+```bash
+cp .env.example .env      # ajuste o que precisar; os defaults funcionam em dev
+make up                   # postgres + minio + api (a API roda as migrations sozinha)
+make logs                 # acompanha
+```
+
+- API: <http://localhost:8000> · docs interativos em `/docs`
+- Console do MinIO: <http://localhost:9001>
+
+O **R Worker fica de fora do `make up`** de propósito: a imagem Bioconductor leva
+cerca de 20 minutos para compilar. Quando precisar dele:
+
+```bash
+make up-worker
+```
+
+`make` sem argumento lista todos os alvos (`migrate`, `migration`, `test`, `psql`,
+`reset`, `seed`, ...).
+
+---
+
+## Os dois papéis de banco (leia antes de mexer no banco)
+
+Não é firula. É o que faz o isolamento entre organizações existir de verdade.
+
+| Papel | Atributos | Quem usa |
 |---|---|---|
-| Migrations SQL (tabelas, índices, views, roles) | ✅ Pronto | Roda automático no `docker compose up` via `initdb.d` |
-| Trigger `trg_notify_new_job` | ✅ Pronto | PG notifica o R Worker a cada INSERT com `status='queued'` |
-| FastAPI — core, config, pool PG | ✅ Pronto | Lifespan, CORS, `asyncpg` pool |
-| FastAPI — router `projects` + repositório PG | ✅ Pronto | CRUD: listar, buscar por ID, criar |
-| FastAPI — router `jobs` (list + WebSocket) | 🔧 Parcial | List OK; WS é echo — LISTEN/NOTIFY real pendente |
-| FastAPI — router `samples` (presigned upload) | 🔧 Stub | Estrutura criada, lógica MinIO pendente |
-| FastAPI — router `analysis` (busca ES) | 🔧 Stub | Endpoints declarados, handlers pendentes |
-| R Worker — loop `LISTEN/NOTIFY` + dispatcher | ✅ Pronto | `postgresWaitForNotify` + `FOR UPDATE SKIP LOCKED` |
-| R Worker — helpers PG / ES / MinIO | ✅ Pronto | Conexão, bulk insert, download/upload |
-| R Worker — `deseq2.R` | 🔧 Parcial | Fluxo principal escrito; requer phyloseq real para teste |
-| R Worker — `ancombc.R` / `maaslin2.R` | 🔧 Stub | Esqueleto com chamadas corretas, sem dados reais |
-| R Worker — `spieceasi.R` / `random_forest.R` | 🔧 Stub | Idem |
-| R Worker — `gsea.R` / `funguild.R` / `picrust2.R` | 🔧 Stub | Idem |
-| Infra k3s (manifests por nó) | ✅ Pronto | Deployments, taints, StatefulSets, Ingress |
-| Docker Compose (dev local) | ✅ Pronto | PG + ES + MinIO + API (R Worker separado — imagem pesa ~20 min de build) |
+| `api_user` | dono do schema | **só as migrations** (Alembic) |
+| `rizoma_app` | `NOSUPERUSER NOBYPASSRLS` | **o runtime da API** |
+| `rizoma_system` | `BYPASSRLS` | login, reaper de jobs, verificação pública de laudo |
 
-> Scripts R são stubs aguardando dados reais de QIIME2/DADA2. A estrutura de chamadas e o contrato de output já estão definidos; preencher é trabalho de análise, não de arquitetura.
+Toda tabela tem `organization_id` e tem Row-Level Security ligada. A policy compara
+esse campo com um parâmetro definido por transação.
 
----
+O motivo do `rizoma_app` ser **NOSUPERUSER**: no Postgres, **superusuário ignora RLS
+em silêncio**. A policy continua no catálogo, os testes passam, e o isolamento
+simplesmente não acontece. Rodar a API como superusuário é ter RLS de enfeite.
 
-## Comparativo de desempenho
+E o parâmetro da organização é definido com **`SET LOCAL`**, dentro da transação —
+nunca `SET` puro. Com pool de conexões, um `SET` sobrevive ao fim da requisição e a
+próxima requisição herda a organização da anterior. É vazamento cross-tenant
+silencioso.
 
-Estimativa operacional: **workflow manual de R scripts** (pré-plataforma) vs **Bio-Platform** (atual).
+Quem precisa legitimamente cruzar organizações (achar o usuário no login, antes de
+saber a org dele) usa o papel `rizoma_system`. **Não existe "GUC de bypass"** — um
+`SET app.bypass_rls = true` seria burlável, porque qualquer usuário pode setar um GUC
+customizado. Bypass tem que ser atributo de papel.
 
-```mermaid
-%%{init: {"theme": "base"}}%%
-xychart-beta
-    title "Tempo médio por operação (minutos) — menor é melhor"
-    x-axis ["Configurar análise", "Ver resultados", "Recuperar erro", "Setup novo projeto"]
-    y-axis "Minutos" 0 --> 65
-    bar [50, 20, 35, 60]
-    bar [4, 1, 2, 8]
-```
+Os papéis `rizoma_app` e `rizoma_system` são criados pela própria migration baseline.
 
-*Azul = workflow manual · Laranja = Bio-Platform*
-
-| Métrica | Workflow manual | Bio-Platform | Ganho |
-|---|---|---|---|
-| Configurar nova análise | ~50 min (editar script, carregar dados) | ~4 min (POST via API) | **12×** |
-| Ver resultados | ~20 min (ler CSV, montar tabela) | ~1 min (dashboard / ES search) | **20×** |
-| Recuperar de erro | ~35 min (reler log, re-rodar manualmente) | ~2 min (log no PG, retry automático) | **17×** |
-| Setup novo projeto | ~60 min (estrutura, scripts, paths) | ~8 min (POST + upload FASTQ) | **7×** |
-| Análises simultâneas | 1 (bloqueante no desktop) | 8+ (fila PG, nó dedicado k3s) | **8×** |
-| Rastreabilidade | Nenhuma (arquivos locais, sem histórico) | Total (PG + ES + MinIO) | — |
-| Acesso remoto | Não | Sim (k3s ingress) | — |
+Detalhes: [ADR-007](docs/decisions/ADR-007-uuidv7-rls.md).
 
 ---
 
-## Contexto científico
+## Migrations
 
-Três projetos de análise rodando na mesma plataforma:
-
-| Projeto | Marcador | Análise principal | Método |
-|---------|----------|-------------------|--------|
-| **INOVAHERB** | ITS | Micobioma fatorial | ANCOM-BC2 |
-| **Pós-Fogo** | 16S | Série temporal de recuperação de solo | MaAsLin2 |
-| **Biorremediação** | ITS + 16S | Correlação com bário (BaCl₂/BaSO₄) + *Typha domingensis* | DESeq2 + SpiecEasi |
-
-O objetivo final do TCC é um painel de **6 PCoAs** (2 por projeto) gerado quando os 3 projetos concluem — evento `CrossProjectFigureReady`.
-
----
-
-## Stack
-
-| Camada | Tecnologia |
-|--------|-----------|
-| API | FastAPI (async) + asyncpg |
-| Fila de jobs | PostgreSQL LISTEN/NOTIFY + `FOR UPDATE SKIP LOCKED` |
-| Computação | R 4.4 + Bioconductor (DESeq2, ANCOM-BC2, MaAsLin2, SpiecEasi) |
-| Banco | PostgreSQL 16 (source of truth) |
-| Busca | Elasticsearch 8 (leitura, indexado após PG confirmar `done`) |
-| Blobs | MinIO S3-compat (FASTQ, phyloseq .rds, modelos RF) |
-| Infra | k3s (5 nós AMD) |
-
-**Sem Redis** — a fila é inteiramente via PG.
-
----
-
-## Rodar localmente
+Alembic. O runner de `.sql` caseiro foi aposentado — os arquivos antigos estão em
+`docs/legacy-migrations/`, só como histórico ([ADR-002](docs/decisions/ADR-002-alembic.md)).
 
 ```bash
-cp .env.example .env
-docker compose up -d
+make migrate                          # alembic upgrade head
+make migration m="add samples table"  # cria uma revisão nova
 ```
 
-A API sobe em `http://localhost:8000`. Docs interativos em `/docs`.
+O container da API roda `alembic upgrade head` antes de subir o uvicorn, então em dev
+você raramente precisa chamar isso à mão.
 
-Primeira vez — as migrations rodam automaticamente via `docker-entrypoint-initdb.d`:
-
-```
-api/app/migrations/001_init.sql        → tabelas base (projects, samples)
-api/app/migrations/002_jobs_queue.sql  → fila + trigger NOTIFY + analysis_results
-api/app/migrations/003_views_roles.sql → views analíticas + roles PG
-...
-A API agora gerencia as migrações automaticamente no startup via `app/core/migrations.py`.
-As migrações são lidas de `api/app/migrations/` e aplicadas se ainda não existirem na tabela `schema_migrations`.
-```
+O Alembic usa driver **síncrono** (`psycopg`) e o papel **dono do schema**; o runtime
+usa `asyncpg` e o papel `rizoma_app`. São duas DSNs distintas em `app/core/config.py`,
+e a separação é proposital.
 
 ---
 
-## Estrutura de pastas
-
-```
-bio-platform/
-├── api/
-│   └── app/
-│       ├── core/           → config, pool PG, migrations runner
-│       ├── migrations/     → SQL files applied on startup
-│       ├── domain/         → entidades e VOs por Bounded Context
-│       │   ├── shared/     → MarkerType, ProjectCode, AnalysisId
-│       │   ├── sample/     → Project, Sample, SampleParser, TreatmentGroup
-│       │   ├── pipeline/   → PipelineJob, MarkerConfig
-│       │   └── analysis/   → AnalysisJob, AnalysisType
-│       ├── infrastructure/
-│       │   ├── adapters/   → ACL: QiimeAdapter, RBioconductorAdapter
-│       │   └── repositories/ → PgProjectRepository, PgJobRepository
-│       └── api/v1/         → routers FastAPI
-├── r-worker/
-│   ├── worker.R            → loop LISTEN/NOTIFY
-│   ├── analyses/           → um arquivo .R por tipo de análise
-│   └── utils/              → pg_helpers.R, es_helpers.R, minio_helpers.R
-└── infra/manifests/        → deployments k3s por nó
-```
-
----
-
-## Fluxo principal
-
-```
-Upload FASTQ (presigned URL → MinIO)
-    ↓
-POST /api/v1/projects/{id}/pipeline   →  PipelineJob criado (status: queued)
-    ↓
-trg_notify_new_job  →  pg_notify('new_job', job_id)
-    ↓
-R Worker acorda  →  FOR UPDATE SKIP LOCKED
-    ↓
-Análise roda (DESeq2 / ANCOMBC2 / MaAsLin2 / SpiecEasi / ...)
-    ↓
-Resultado salvo:
-  ├── PostgreSQL  →  analysis_results (JSONB)
-  ├── Elasticsearch  →  bulk index em batches de 1000
-  └── MinIO  →  modelos RF (.rds), artefatos grandes
-    ↓
-[quando os 3 projetos concluem]  →  CrossProjectFigureReady
-```
-
-O R Worker **nunca gera figuras** — output é sempre dado estruturado (CSV → PG, JSON → ES). Visualizações ficam no [bio-frontend](../bio-frontend).
-
----
-
-## Anti-Corruption Layer (ACL)
-
-Nomes de bibliotecas externas **não aparecem fora dos adapters**:
-
-| Adapter | Traduz |
-|---------|--------|
-| `QiimeAdapter` | vocabulário QIIME2 → domínio |
-| `RBioconductorAdapter` | `phyloseq`, `DESeqDataSet`, `SpiecEasi` → domínio |
-
----
-
-## Endpoints principais
-
-| Método | Rota | O que faz |
-|--------|------|-----------|
-| GET | `/api/v1/projects/` | Lista projetos |
-| POST | `/api/v1/projects/` | Cria projeto |
-| POST | `/api/v1/samples/presigned-upload` | Gera URL para upload de FASTQ |
-| GET | `/api/v1/jobs/{project_id}` | Lista jobs do projeto |
-| WS | `/api/v1/jobs/ws/status` | Status em tempo real |
-| GET | `/api/v1/analysis/{job_id}/results` | Resultados de uma análise |
-| GET | `/api/v1/analysis/search/degs?q=` | Busca genes (Elasticsearch) |
-
----
-
-## Adicionar um novo tipo de análise
-
-1. Criar `r-worker/analyses/minha_analise.R` com função `run_minha_analise(payload, con)`
-2. Registrar no `switch` em `r-worker/worker.R`
-3. Adicionar o valor em `AnalysisType` em `api/app/domain/analysis/entities.py`
-4. Output deve ser sempre JSON serializável — nunca `ggplot2`, nunca `ggsave`
-
----
-
-## Deploy k3s
-
-Cada serviço tem afinidade de nó configurada nos manifests:
-
-| Nó | Serviço |
-|----|---------|
-| `agent-1` | R Worker (taint `only-r-worker`) |
-| `agent-2` | API FastAPI |
-| `agent-4` | PostgreSQL, MinIO |
+## Testes
 
 ```bash
-kubectl apply -f infra/manifests/
+make test              # dentro do container
+# ou, localmente:
+cd api && pytest
+cd api && pytest tests/test_foo.py
 ```
 
-Timeout do Nginx Ingress configurado para 30 min (SpiecEasi pode levar 20 min).
+O teste de isolamento multi-tenant é obrigatório: se ele quebrar, alguém tornou a RLS
+decorativa.
 
 ---
 
-## Variáveis de ambiente
+## Object storage: os dois endpoints S3
 
-Ver `.env.example`. As principais:
+Causa nº 1 de `403` no upload. São dois, e são diferentes:
 
-```
-POSTGRES_HOST / POSTGRES_DB / POSTGRES_USER / POSTGRES_PASSWORD
-ES_HOST
-MINIO_ENDPOINT / MINIO_ACCESS_KEY / MINIO_SECRET_KEY
-```
+- `S3_ENDPOINT` — por onde **a API** fala com o MinIO. Na rede do Compose: `http://minio:9000`.
+- `S3_PUBLIC_ENDPOINT` — o host que vai **assinado** na presigned URL. Quem faz o PUT é
+  o **browser**, e o browser não resolve o nome `minio`. Em dev: `http://localhost:9000`.
 
-Em k3s, usar um Secret `bio-platform-secrets` referenciado nos deployments.
+A assinatura V4 cobre o header `Host`. Assinar com o host interno e acessar pelo
+externo devolve 403. Ver [ADR-001](docs/decisions/ADR-001-object-storage.md).
+
+---
+
+## Decisões de arquitetura
+
+Estão em [`docs/decisions/`](docs/decisions/), uma por arquivo:
+
+| ADR | Decisão |
+|---|---|
+| [001](docs/decisions/ADR-001-object-storage.md) | MinIO + presigned URL; sair dos PG Large Objects |
+| [002](docs/decisions/ADR-002-alembic.md) | Alembic desde já |
+| [003](docs/decisions/ADR-003-no-elasticsearch.md) | Elasticsearch fora do MVP (Postgres FTS + pg_trgm) |
+| [004](docs/decisions/ADR-004-tanstack-query.md) | TanStack Query v5 (por causa do offline) |
+| [005](docs/decisions/ADR-005-oauth-only.md) | Só OAuth, sem senha |
+| [006](docs/decisions/ADR-006-append-only-results.md) | Resultados append-only (ISO/IEC 17025) |
+| [007](docs/decisions/ADR-007-uuidv7-rls.md) | UUIDv7 + RLS com `SET LOCAL` |
+| [008](docs/decisions/ADR-008-nf-core-ampliseq.md) | nf-core/ampliseq para FASTQ→ASV |
+| [009](docs/decisions/ADR-009-vertical-slices.md) | Fatias verticais, não 8 fases horizontais |
+| [010](docs/decisions/ADR-010-docker-compose-not-k3s.md) | Docker Compose até doer; k3s adiado |
+
+O documento completo: **`RIZOMA_arquitetura_v2.md`**.

@@ -1,51 +1,70 @@
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import logging
 from contextlib import asynccontextmanager
 
-from app.core.database import init_db_pool, close_db_pool
-from app.core.migrations import run_migrations
-from app.core.elasticsearch import init_es_client, close_es_client
-from app.api.v1 import projects, samples, jobs, analysis, worker, auth, admin, metagenomics
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
 from app.core.config import settings
+from app.modules.files.router import router as files_router
+from app.modules.identity.router import router as identity_router
+from app.modules.jobs.reaper import reaper_loop
+from app.modules.jobs.router import router as jobs_router
+from app.modules.laboratory.router import router as lab_router
+from app.modules.lims.router import router as lims_router
+from app.modules.reports.router import router as reports_router
+from app.shared.db import dispose_engine
+
+# Os routers de app/api/v1/ NÃO são montados. Eles falam com o schema anterior
+# (samples.fastq_r1_oid, projects sem organization_id) que o baseline do Alembic
+# substituiu. Continuam no repositório como referência; mounta-los agora só
+# produziria erro 500. Serão removidos quando a v2 cobrir o que falta.
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print(">>> RIZOMA API VERSION: 5 (Emergency Fix)", flush=True)
-    await init_db_pool()
-    await run_migrations()
-    await init_es_client()
+    # Migrations não rodam aqui. Quem manda no schema é o Alembic
+    # (`alembic upgrade head`, no entrypoint do container). DDL no boot da app
+    # foi exatamente o que produziu o "emergency schema repair" da versão anterior.
+    reaper = asyncio.create_task(reaper_loop())
     yield
-    await close_db_pool()
-    await close_es_client()
+    reaper.cancel()
+    try:
+        await reaper
+    except asyncio.CancelledError:
+        pass
+    await dispose_engine()
 
 
 app = FastAPI(
     title="Rizoma API",
-    version="0.1.0",
+    version="2.0.0",
+    description="Plataforma de biotecnologia ambiental — MVP (Fase 0 + Fatia 1).",
     lifespan=lifespan,
 )
 
-_cors_origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_origins,
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(projects.router, prefix="/api/v1/projects", tags=["projects"])
-app.include_router(samples.router, prefix="/api/v1/samples", tags=["samples"])
-app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
-app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
-app.include_router(worker.router, prefix="/api/v1/worker", tags=["worker"])
-app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
-app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
-app.include_router(metagenomics.router, prefix="/api/v1/metagenomics", tags=["metagenomics"])
+# Atenção: os routers não são uniformes. identity e lims expõem rotas relativas e
+# recebem o prefixo aqui; files, jobs, laboratory e reports já declaram o próprio
+# prefixo completo no APIRouter. Somar prefixo de novo produziria
+# /api/v2/files/api/v2/files/...
+app.include_router(identity_router, prefix="/api/v2/identity")
+app.include_router(lims_router, prefix="/api/v2/lims")
+app.include_router(files_router)
+app.include_router(jobs_router)
+app.include_router(lab_router)
+app.include_router(reports_router)
 
 
-@app.get("/health")
+@app.get("/health", tags=["meta"])
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2.0.0"}

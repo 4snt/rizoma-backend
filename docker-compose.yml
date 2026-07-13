@@ -1,61 +1,110 @@
 services:
+  # PostGIS, e não postgres:16 — o baseline do Alembic faz CREATE EXTENSION
+  # postgis (além de pg_trgm, que substitui o Elasticsearch — ADR-003).
   postgres:
-    image: postgres:16
+    image: postgis/postgis:16-3.4
     environment:
-      POSTGRES_DB: bioinformatica
-      POSTGRES_USER: api_user
-      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: ${POSTGRES_DB:-rizoma}
+      POSTGRES_USER: ${POSTGRES_USER:-api_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
-      - ./api/app/migrations:/docker-entrypoint-initdb.d
+      # NÃO montar ./api/app/migrations em /docker-entrypoint-initdb.d.
+      # O Alembic é o dono do schema (ADR-002); o mount faria o Postgres aplicar
+      # as migrations velhas no primeiro boot e colidir com o baseline.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U api_user -d bioinformatica"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-api_user} -d ${POSTGRES_DB:-rizoma}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
-  elasticsearch:
-    image: elasticsearch:8.13.0
+  # Object storage (ADR-001) — os FASTQ saem dos PG Large Objects.
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
     environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-rizoma}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-rizoma123}
     ports:
-      - "9200:9200"
+      - "9000:9000"   # API S3
+      - "9001:9001"   # console web
     volumes:
-      - es_data:/usr/share/elasticsearch/data
+      - minio_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health | grep -v '\"status\":\"red\"'"]
-      interval: 10s
-      timeout: 10s
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
       retries: 12
+
+  # Job de uma tacada só: cria o bucket e sai. Sem ele, o primeiro PUT assinado
+  # devolve NoSuchBucket.
+  minio-init:
+    image: minio/mc
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-rizoma}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-rizoma123}
+      S3_BUCKET: ${S3_BUCKET:-rizoma}
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY &&
+      mc mb --ignore-existing local/$$S3_BUCKET &&
+      mc anonymous set none local/$$S3_BUCKET &&
+      echo bucket $$S3_BUCKET pronto
+      "
+    restart: "no"
 
   api:
     build: ./api
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      # Dentro da rede do Compose o banco é 'postgres', não 'localhost'.
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      # S3_ENDPOINT ....... por onde a API fala com o MinIO (rede interna).
+      # S3_PUBLIC_ENDPOINT  host que vai ASSINADO na URL — quem faz o PUT/GET é
+      #                     o BROWSER, e o browser não resolve 'minio'. A
+      #                     assinatura V4 cobre o header Host: assinar com o
+      #                     host errado devolve 403 na hora do upload.
+      S3_ENDPOINT: http://minio:9000
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-http://localhost:9000}
     depends_on:
       postgres:
         condition: service_healthy
-      elasticsearch:
+      minio:
         condition: service_healthy
     volumes:
       - ./api:/app
+    # Migration antes do servidor: o Alembic cria o schema E os papéis
+    # rizoma_app / rizoma_system, sem os quais o runtime nem conecta.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
+  # Fora do 'up' padrão: a imagem Bioconductor leva ~20 min para buildar.
+  # Suba com:  docker compose --profile worker up -d
   r-worker:
     build: ./r-worker
+    profiles: ["worker"]
     env_file: .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      S3_ENDPOINT: http://minio:9000
     volumes:
       - ./r-worker:/worker
     depends_on:
       postgres:
         condition: service_healthy
-      elasticsearch:
+      minio:
         condition: service_healthy
 
 volumes:
   pg_data:
-  es_data:
+  minio_data:
+  # es_data removido — Elasticsearch saiu do MVP (ADR-003).
