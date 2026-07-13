@@ -30,17 +30,9 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-      # bitnami/minio sobe o server sem precisar de argumento de comando (o que
-      # a imagem oficial exige e um service container não permite passar), e cria
-      # o bucket via MINIO_DEFAULT_BUCKETS.
-      minio:
-        image: bitnami/minio:latest
-        env:
-          MINIO_ROOT_USER: rizoma
-          MINIO_ROOT_PASSWORD: rizoma123
-          MINIO_DEFAULT_BUCKETS: rizoma
-        ports:
-          - 9000:9000
+    # MinIO NÃO entra como service container: a imagem oficial exige o argumento
+    # `server /data`, que a sintaxe de `services:` não permite passar. Sobe num
+    # step com `docker run` (abaixo), que aceita o comando.
 
     env:
       POSTGRES_HOST: localhost
@@ -73,13 +65,20 @@ jobs:
           pip install -r requirements.txt
           pip install pytest-cov bandit
 
-      - name: Aguardar o MinIO responder
+      - name: Subir o MinIO e criar o bucket
         run: |
+          docker run -d --name minio -p 9000:9000 \
+            -e MINIO_ROOT_USER=rizoma -e MINIO_ROOT_PASSWORD=rizoma123 \
+            minio/minio:latest server /data
           for i in $(seq 1 30); do
-            if curl -sf http://localhost:9000/minio/health/live; then echo "minio ok"; exit 0; fi
+            if curl -sf http://localhost:9000/minio/health/live; then echo "minio ok"; break; fi
             sleep 2
           done
-          echo "MinIO não respondeu a tempo"; exit 1
+          # Cria o bucket explicitamente — não dá para depender da ordem dos
+          # testes para que algum chame ensure_bucket() antes de um put_object.
+          docker run --rm --network host --entrypoint sh minio/mc -c \
+            "mc alias set local http://localhost:9000 rizoma rizoma123 && \
+             mc mb --ignore-existing local/rizoma"
 
       - name: Aplicar migrations (Alembic cria schema + papéis rizoma_app/system)
         run: alembic upgrade head
