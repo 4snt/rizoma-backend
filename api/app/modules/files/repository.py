@@ -70,7 +70,7 @@ class PgFileRepository:
         ).mappings().first()
         return _from_row(dict(row))
 
-    async def list(self, project_id: UUID | None, sample_id: UUID | None) -> list[FileRecord]:
+    async def list_files(self, project_id: UUID | None, sample_id: UUID | None) -> list[FileRecord]:
         rows = (
             await self.session.execute(
                 text(

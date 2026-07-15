@@ -109,7 +109,7 @@ async def list_files(
 ) -> list[FileOut]:
     ctx.require("file:read")
     repo = PgFileRepository(ctx.session)
-    files = await repo.list(project_id, sample_id)
+    files = await repo.list_files(project_id, sample_id)
     return [FileOut(**f.to_dict()) for f in files]
 
 
