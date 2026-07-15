@@ -1,6 +1,7 @@
 """Regras de identidade: login, organizações, membros, convites.
 
-Duas conexões diferentes, de propósito:
+Duas conexões diferentes, de propósito — decisão de infraestrutura, não de
+domínio, por isso permanece explícita aqui (não no repository):
 
   * A sessão do request (papel `rizoma_app`, NOBYPASSRLS) para tudo que acontece
     DENTRO de uma organização já conhecida. A RLS é a rede de segurança.
@@ -15,8 +16,6 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import HTTPException, status
-from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -27,9 +26,18 @@ from sqlalchemy.ext.asyncio import (
 from app.core.config import settings
 from app.core.google_auth import verify_google_token
 from app.core.security import create_access_token
-from app.shared.context import Ctx
-from app.shared.ids import new_id
-from app.shared.tenancy import bind_tenant
+from app.modules.identity.domain.entities import (
+    Invitation,
+    Organization,
+    assert_email_domain_allowed,
+)
+from app.modules.identity.domain.exceptions import (
+    AlreadyMemberError,
+    DomainNotAllowedError,
+    DuplicateInvitationError,
+    SlugTakenError,
+)
+from app.modules.identity.repository import PgIdentityRepository
 from app.modules.identity.schemas import (
     GoogleLoginIn,
     InvitationCreate,
@@ -41,6 +49,9 @@ from app.modules.identity.schemas import (
     OrganizationOut,
     UserOut,
 )
+from app.shared.context import Ctx
+from app.shared.ids import new_id
+from app.shared.tenancy import bind_tenant
 
 # ── Engine de sistema (BYPASSRLS) ───────────────────────────────────────────
 # Usado só no login: é o único momento sem org definida, em que é preciso ler
@@ -76,37 +87,14 @@ async def dispose_system_engine() -> None:
     _system_sessionmaker = None
 
 
-# ── Consultas reusadas ──────────────────────────────────────────────────────
-
-_ORGS_OF_USER = text(
-    """
-    SELECT o.id, o.slug, o.name, m.role
-      FROM organization_members m
-      JOIN organizations o ON o.id = m.organization_id
-     WHERE m.user_id = :u AND o.is_active
-     ORDER BY m.created_at
-    """
-)
+def _user_out(user) -> UserOut:
+    return UserOut(**user.to_dict())
 
 
-async def _orgs_of_user(session: AsyncSession, user_id: UUID) -> list[OrganizationOut]:
-    rows = (await session.execute(_ORGS_OF_USER, {"u": str(user_id)})).mappings().all()
-    return [OrganizationOut(**r) for r in rows]
-
-
-async def _user_out(session: AsyncSession, user_id: UUID) -> UserOut:
-    row = (
-        await session.execute(
-            text(
-                "SELECT id, email, name, avatar_url, is_active, last_login "
-                "FROM users WHERE id = :u"
-            ),
-            {"u": str(user_id)},
-        )
-    ).mappings().first()
-    if row is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuário não encontrado.")
-    return UserOut(**row)
+def _org_out(membership) -> OrganizationOut:
+    return OrganizationOut(
+        id=membership.id, slug=membership.slug, name=membership.name, role=membership.role
+    )
 
 
 # ── 1. Login via Google ─────────────────────────────────────────────────────
@@ -126,12 +114,10 @@ async def login_with_google(body: GoogleLoginIn) -> LoginOut:
             status.HTTP_401_UNAUTHORIZED, "Google não retornou e-mail para este token."
         )
 
-    domain = settings.allowed_email_domain
-    if domain and not email.endswith(domain.lower()):
-        raise HTTPException(
-            status.HTTP_403_FORBIDDEN,
-            f"DomainNotAllowed: acesso restrito a e-mails do domínio {domain}.",
-        )
+    try:
+        assert_email_domain_allowed(email, settings.allowed_email_domain)
+    except DomainNotAllowedError as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
 
     name = claims.get("name") or email.split("@")[0]
     google_sub = claims.get("sub")
@@ -140,99 +126,43 @@ async def login_with_google(body: GoogleLoginIn) -> LoginOut:
 
     async with system_sessionmaker()() as s:
         async with s.begin():
-            row = (
-                await s.execute(
-                    text("SELECT id FROM users WHERE email = :e"), {"e": email}
-                )
-            ).first()
+            repo = PgIdentityRepository(s)
+            existing = await repo.find_user_by_email(email)
 
-            if row is None:
+            if existing is None:
                 # Usuário novo: só entra com convite pendente. Sem isso, qualquer
                 # pessoa do domínio criaria conta sozinha.
-                invite = (
-                    await s.execute(
-                        text(
-                            "SELECT id, organization_id, role FROM invitations "
-                            "WHERE lower(email) = :e AND accepted_at IS NULL "
-                            "ORDER BY invited_at LIMIT 1"
-                        ),
-                        {"e": email},
-                    )
-                ).mappings().first()
+                invite = await repo.find_pending_invitation(email)
                 if invite is None:
                     raise HTTPException(
                         status.HTTP_403_FORBIDDEN,
                         "NotInvited: este e-mail não possui convite pendente. "
                         "Peça a um administrador que envie um convite.",
                     )
-
-                user_id = new_id()
-                await s.execute(
-                    text(
-                        "INSERT INTO users (id, email, name, google_sub, avatar_url, last_login) "
-                        "VALUES (:id, :e, :n, :g, :a, :t)"
-                    ),
-                    {
-                        "id": str(user_id),
-                        "e": email,
-                        "n": name,
-                        "g": google_sub,
-                        "a": avatar_url,
-                        "t": now,
-                    },
+                user_id = await repo.create_user(
+                    email=email, name=name, google_sub=google_sub, avatar_url=avatar_url, at=now
                 )
-                await _accept_invitation(s, invite, user_id, now)
+                await repo.accept_invitation(invite, user_id, now)
             else:
-                user_id = row[0]
-                await s.execute(
-                    text(
-                        "UPDATE users SET last_login = :t, "
-                        "google_sub = COALESCE(google_sub, :g), "
-                        "avatar_url = COALESCE(:a, avatar_url) WHERE id = :u"
-                    ),
-                    {"t": now, "g": google_sub, "a": avatar_url, "u": str(user_id)},
+                user_id = existing.id
+                await repo.touch_login(
+                    user_id, at=now, google_sub=google_sub, avatar_url=avatar_url
                 )
                 # Usuário já existente pode ter sido convidado para uma org nova.
-                pending = (
-                    await s.execute(
-                        text(
-                            "SELECT id, organization_id, role FROM invitations "
-                            "WHERE lower(email) = :e AND accepted_at IS NULL"
-                        ),
-                        {"e": email},
-                    )
-                ).mappings().all()
-                for invite in pending:
-                    await _accept_invitation(s, invite, user_id, now)
+                for invite in await repo.list_pending_invitations(email):
+                    await repo.accept_invitation(invite, user_id, now)
 
-            user = await _user_out(s, user_id)
-            orgs = await _orgs_of_user(s, user_id)
+            user = await repo.get_user(user_id)
+            orgs = await repo.orgs_of_user(user_id)
 
     # O papel do JWT é o da primeira org. Trocar de org emite token novo — o
     # papel nunca é escolhido pelo cliente.
     role = orgs[0].role if orgs else "viewer"
     token = create_access_token(sub=str(user_id), role=role)
-    return LoginOut(access_token=token, user=user, organizations=orgs)
-
-
-async def _accept_invitation(
-    s: AsyncSession, invite, user_id: UUID, now: datetime
-) -> None:
-    await s.execute(
-        text(
-            "INSERT INTO organization_members (id, organization_id, user_id, role) "
-            "VALUES (:id, :o, :u, :r) ON CONFLICT (organization_id, user_id) DO NOTHING"
-        ),
-        {
-            "id": str(new_id()),
-            "o": str(invite["organization_id"]),
-            "u": str(user_id),
-            "r": invite["role"],
-        },
-    )
-    await s.execute(
-        text("UPDATE invitations SET accepted_at = :t WHERE id = :i"),
-        {"t": now, "i": str(invite["id"])},
+    return LoginOut(
+        access_token=token,
+        user=_user_out(user),
+        organizations=[_org_out(o) for o in orgs],
     )
 
 
@@ -240,20 +170,25 @@ async def _accept_invitation(
 
 
 async def get_me(ctx: Ctx) -> MeOut:
-    user = await _user_out(ctx.session, ctx.user_id)
-    orgs = await _orgs_of_user(ctx.session, ctx.user_id)
+    repo = PgIdentityRepository(ctx.session)
+    user = await repo.get_user(ctx.user_id)
+    orgs = await repo.orgs_of_user(ctx.user_id)
     current = next((o for o in orgs if o.id == ctx.org_id), None)
-    return MeOut(user=user, organization=current, role=ctx.role, organizations=orgs)
+    return MeOut(
+        user=_user_out(user),
+        organization=_org_out(current) if current else None,
+        role=ctx.role,
+        organizations=[_org_out(o) for o in orgs],
+    )
 
 
 # ── 3 e 4. Organizações ─────────────────────────────────────────────────────
 
 
-async def list_organizations(
-    session: AsyncSession, user_id: UUID
-) -> list[OrganizationOut]:
+async def list_organizations(session: AsyncSession, user_id: UUID) -> list[OrganizationOut]:
     """Só enxerga as próprias — garantido pela policy `own_memberships`."""
-    return await _orgs_of_user(session, user_id)
+    repo = PgIdentityRepository(session)
+    return [_org_out(o) for o in await repo.orgs_of_user(user_id)]
 
 
 async def create_organization(
@@ -264,50 +199,26 @@ async def create_organization(
     É por aqui que a PRIMEIRA organização nasce: o usuário ainda não é membro de
     nada, então este endpoint não pode exigir `get_ctx`.
     """
-    org_id = new_id()
+    repo = PgIdentityRepository(session)
+    org = Organization(id=new_id(), slug=body.slug, name=body.name, cnpj=body.cnpj)
     try:
-        await session.execute(
-            text(
-                "INSERT INTO organizations (id, slug, name, cnpj) "
-                "VALUES (:id, :s, :n, :c)"
-            ),
-            {"id": str(org_id), "s": body.slug, "n": body.name, "c": body.cnpj},
-        )
-        await session.flush()
-    except IntegrityError as exc:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Já existe uma organização com o slug '{body.slug}'.",
-        ) from exc
+        await repo.create_organization(org)
+    except SlugTakenError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
 
     # organization_members tem RLS com WITH CHECK sobre o GUC de tenant. Sem
     # amarrar a transação à org recém-criada, o próprio INSERT seria recusado.
-    await bind_tenant(session, org_id, user_id)
-    await session.execute(
-        text(
-            "INSERT INTO organization_members (id, organization_id, user_id, role) "
-            "VALUES (:id, :o, :u, 'org_admin')"
-        ),
-        {"id": str(new_id()), "o": str(org_id), "u": str(user_id)},
-    )
-    return OrganizationOut(id=org_id, slug=body.slug, name=body.name, role="org_admin")
+    await bind_tenant(session, org.id, user_id)
+    await repo.add_member(org.id, user_id, "org_admin")
+    return OrganizationOut(id=org.id, slug=org.slug, name=org.name, role="org_admin")
 
 
 # ── 5. Membros ──────────────────────────────────────────────────────────────
 
 
 async def list_members(ctx: Ctx) -> list[MemberOut]:
-    rows = (
-        await ctx.session.execute(
-            text(
-                "SELECT m.id, m.user_id, u.email, u.name, m.role, m.created_at "
-                "FROM organization_members m JOIN users u ON u.id = m.user_id "
-                "WHERE m.organization_id = :o ORDER BY m.created_at"
-            ),
-            {"o": str(ctx.org_id)},
-        )
-    ).mappings().all()
-    return [MemberOut(**r) for r in rows]
+    repo = PgIdentityRepository(ctx.session)
+    return [MemberOut(**m) for m in await repo.list_members(ctx.org_id)]
 
 
 # ── 6 e 7. Convites ─────────────────────────────────────────────────────────
@@ -315,63 +226,31 @@ async def list_members(ctx: Ctx) -> list[MemberOut]:
 
 async def create_invitation(ctx: Ctx, body: InvitationCreate) -> InvitationOut:
     email = body.email.strip().lower()
-    domain = settings.allowed_email_domain
-    if domain and not email.endswith(domain.lower()):
+    try:
+        assert_email_domain_allowed(email, settings.allowed_email_domain)
+    except DomainNotAllowedError:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            f"Só é possível convidar e-mails do domínio {domain}.",
+            f"Só é possível convidar e-mails do domínio {settings.allowed_email_domain}.",
         )
 
-    already = (
-        await ctx.session.execute(
-            text(
-                "SELECT 1 FROM organization_members m JOIN users u ON u.id = m.user_id "
-                "WHERE m.organization_id = :o AND lower(u.email) = :e"
-            ),
-            {"o": str(ctx.org_id), "e": email},
-        )
-    ).first()
-    if already:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT, f"{email} já é membro desta organização."
-        )
-
-    inv_id = new_id()
+    repo = PgIdentityRepository(ctx.session)
+    invitation = Invitation(
+        id=new_id(),
+        organization_id=ctx.org_id,
+        email=email,
+        role=body.role,
+        invited_by=ctx.user_id,
+    )
     try:
-        row = (
-            await ctx.session.execute(
-                text(
-                    "INSERT INTO invitations (id, organization_id, email, role, invited_by) "
-                    "VALUES (:id, :o, :e, :r, :b) "
-                    "RETURNING id, organization_id, email, role, invited_by, "
-                    "invited_at, accepted_at"
-                ),
-                {
-                    "id": str(inv_id),
-                    "o": str(ctx.org_id),
-                    "e": email,
-                    "r": body.role,
-                    "b": str(ctx.user_id),
-                },
-            )
-        ).mappings().first()
-    except IntegrityError as exc:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            f"Já existe um convite para {email} nesta organização.",
-        ) from exc
-    return InvitationOut(**row)
+        saved = await repo.create_invitation(invitation)
+    except AlreadyMemberError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except DuplicateInvitationError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    return InvitationOut(**saved.to_dict())
 
 
 async def list_invitations(ctx: Ctx) -> list[InvitationOut]:
-    rows = (
-        await ctx.session.execute(
-            text(
-                "SELECT id, organization_id, email, role, invited_by, invited_at, "
-                "accepted_at FROM invitations WHERE organization_id = :o "
-                "ORDER BY invited_at DESC"
-            ),
-            {"o": str(ctx.org_id)},
-        )
-    ).mappings().all()
-    return [InvitationOut(**r) for r in rows]
+    repo = PgIdentityRepository(ctx.session)
+    return [InvitationOut(**i.to_dict()) for i in await repo.list_invitations(ctx.org_id)]
