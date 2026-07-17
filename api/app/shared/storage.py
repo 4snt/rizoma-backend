@@ -24,14 +24,24 @@ class PresignedUpload:
 
 
 def _client(endpoint: str):
-    return boto3.client(
-        "s3",
-        endpoint_url=endpoint,
-        aws_access_key_id=settings.s3_access_key,
-        aws_secret_access_key=settings.s3_secret_key,
-        region_name=settings.s3_region,
-        config=BotoConfig(signature_version="s3v4"),
-    )
+    """Client S3/MinIO.
+
+    Em dev, `endpoint` aponta para o MinIO e as credenciais vêm das settings.
+    Em produção AWS (S3 nativo), deixe S3_ENDPOINT/S3_PUBLIC_ENDPOINT vazios e
+    S3_ACCESS_KEY/S3_SECRET_KEY vazios: aí o boto3 resolve o endpoint regional
+    do S3 sozinho e pega as credenciais da IAM role da task ECS (cadeia padrão
+    do boto3). Assim nenhuma chave estática precisa existir em produção.
+    """
+    kwargs = {
+        "region_name": settings.s3_region,
+        "config": BotoConfig(signature_version="s3v4"),
+    }
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
+    if settings.s3_access_key and settings.s3_secret_key:
+        kwargs["aws_access_key_id"] = settings.s3_access_key
+        kwargs["aws_secret_access_key"] = settings.s3_secret_key
+    return boto3.client("s3", **kwargs)
 
 
 @lru_cache(maxsize=2)

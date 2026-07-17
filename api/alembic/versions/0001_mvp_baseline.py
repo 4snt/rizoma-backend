@@ -12,10 +12,24 @@ Revision ID: 0001_mvp_baseline
 """
 from alembic import op
 
+from app.core.config import settings
+
 revision = "0001_mvp_baseline"
 down_revision = None
 branch_labels = None
 depends_on = None
+
+
+def _sql_literal(value: str) -> str:
+    """Escapa uma string para uso como literal SQL (senha de papel).
+
+    As senhas dos papéis de runtime vêm do ambiente (APP_DB_PASSWORD /
+    SYSTEM_DB_PASSWORD). Em dev/CI caem nos defaults históricos
+    'rizoma_app_pw' / 'rizoma_system_pw'; em produção (AWS/RDS) o operador
+    injeta segredos fortes via SSM. Sem isto a senha ficaria hardcoded na
+    migration — inaceitável fora da rede interna do Compose.
+    """
+    return "'" + value.replace("'", "''") + "'"
 
 
 # Tabelas com escopo de organização. Toda uma delas ganha RLS.
@@ -43,15 +57,16 @@ def upgrade() -> None:
 
     # ── Papel de runtime ────────────────────────────────────────────────
     # NOSUPERUSER e NOBYPASSRLS explícitos: é o que faz a RLS valer de fato.
+    app_pw = _sql_literal(settings.app_db_password)
     op.execute(
-        """
+        f"""
         DO $$
         BEGIN
             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rizoma_app') THEN
-                CREATE ROLE rizoma_app LOGIN PASSWORD 'rizoma_app_pw'
+                CREATE ROLE rizoma_app LOGIN PASSWORD {app_pw}
                     NOSUPERUSER NOCREATEDB NOCREATEROLE NOBYPASSRLS;
             ELSE
-                ALTER ROLE rizoma_app NOSUPERUSER NOBYPASSRLS;
+                ALTER ROLE rizoma_app LOGIN PASSWORD {app_pw} NOSUPERUSER NOBYPASSRLS;
             END IF;
         END$$;
         """
@@ -480,15 +495,16 @@ def upgrade() -> None:
 
     # Papel de sistema: trabalho legitimamente cross-org (reaper de jobs órfãos).
     # BYPASSRLS é um atributo do PAPEL — não dá para se auto-conceder via SET.
+    system_pw = _sql_literal(settings.system_db_password)
     op.execute(
-        """
+        f"""
         DO $$
         BEGIN
             IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rizoma_system') THEN
-                CREATE ROLE rizoma_system LOGIN PASSWORD 'rizoma_system_pw'
+                CREATE ROLE rizoma_system LOGIN PASSWORD {system_pw}
                     NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
             ELSE
-                ALTER ROLE rizoma_system BYPASSRLS;
+                ALTER ROLE rizoma_system LOGIN PASSWORD {system_pw} NOSUPERUSER BYPASSRLS;
             END IF;
         END$$;
         """

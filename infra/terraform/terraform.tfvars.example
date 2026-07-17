@@ -1,0 +1,29 @@
+# Copie para terraform.tfvars e preencha. NÃO comite o terraform.tfvars.
+#   cp terraform.tfvars.example terraform.tfvars
+
+aws_region   = "us-east-1"
+project_name = "rizoma"
+environment  = "prod"
+
+# ── RDS ──────────────────────────────────────────────────────────────
+db_master_password = "TROQUE-por-uma-senha-forte"   # openssl rand -base64 24
+# app_db_password    = "..."   # opcional; forte em produção
+# system_db_password = "..."   # opcional; forte em produção
+
+# ── App / Auth ───────────────────────────────────────────────────────
+jwt_secret           = "TROQUE"   # openssl rand -hex 32
+worker_token         = "TROQUE"   # openssl rand -hex 32
+auth_secret          = "TROQUE"   # openssl rand -hex 32
+google_client_id     = "seu-client-id.apps.googleusercontent.com"
+google_client_secret = "seu-client-secret"
+allowed_email_domain = "@ufvjm.edu.br"
+
+# ── Domínios / TLS (opcional) ─────────────────────────────────────────
+# Deixe vazio para usar só o DNS do ALB em HTTP. Para HTTPS, crie um cert no
+# ACM (na mesma região) cobrindo os hosts e cole o ARN.
+# app_domain          = "rizoma.exemplo.com"
+# api_domain          = "rizomaapi.exemplo.com"
+# acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxx"
+
+# ── Imagem a implantar ────────────────────────────────────────────────
+image_tag = "latest"

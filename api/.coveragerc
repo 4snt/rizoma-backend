@@ -1,0 +1,18 @@
+# O runtime é async e o SQLAlchemy[asyncio] executa o trabalho de ORM/DB dentro
+# de GREENLETS (greenlet_spawn). Sem declarar a concorrência, o coverage perde o
+# rastro do código que roda dentro do greenlet e reporta cobertura MUITO abaixo
+# da real (ex.: um service exercitado ponta-a-ponta aparecia como 42%). Com isto,
+# o mesmo service mede ~88%. 'thread' cobre as dependências síncronas que o
+# FastAPI roda no threadpool.
+[run]
+concurrency = greenlet,thread
+source = app
+omit =
+    app/main.py
+    */__pycache__/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
