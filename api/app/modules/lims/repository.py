@@ -66,6 +66,7 @@ def _project_from_row(row: dict[str, Any]) -> Project:
         marker_type=row["marker_type"],
         status=row["status"],
         dada2_params=row["dada2_params"] or {},
+        analyses=row["analyses"] or [],
         created_by=row["created_by"],
         created_at=row["created_at"],
     )
@@ -165,9 +166,9 @@ class PgProjectRepository:
                     """
                     INSERT INTO projects
                         (id, organization_id, customer_id, code, name, description,
-                         marker_type, dada2_params, created_by)
+                         marker_type, dada2_params, analyses, created_by)
                     VALUES (:id, :org, :customer, :code, :name, :description,
-                            :marker, CAST(:dada2 AS jsonb), :user)
+                            :marker, CAST(:dada2 AS jsonb), CAST(:analyses AS jsonb), :user)
                     RETURNING *
                     """
                 ),
@@ -180,6 +181,7 @@ class PgProjectRepository:
                     "description": project.description,
                     "marker": project.marker_type,
                     "dada2": json.dumps(project.dada2_params),
+                    "analyses": json.dumps(project.analyses),
                     "user": str(project.created_by) if project.created_by else None,
                 },
             )

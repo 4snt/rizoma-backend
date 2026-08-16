@@ -79,6 +79,7 @@ async def create_project(ctx: Ctx, data: ProjectCreate) -> dict[str, Any]:
         description=data.description,
         marker_type=data.marker_type,
         dada2_params=data.dada2_params,
+        analyses=data.analyses,
         created_by=ctx.user_id,
     )
     try:

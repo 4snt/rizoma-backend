@@ -50,6 +50,7 @@ class Project:
     marker_type: str | None = None
     status: str = "draft"
     dada2_params: dict[str, Any] = field(default_factory=dict)
+    analyses: list[dict[str, Any]] = field(default_factory=list)
     created_by: UUID | None = None
     created_at: datetime | None = None
 
@@ -64,6 +65,7 @@ class Project:
             "marker_type": self.marker_type,
             "status": self.status,
             "dada2_params": self.dada2_params,
+            "analyses": self.analyses,
             "created_by": self.created_by,
             "created_at": self.created_at,
         }
