@@ -103,6 +103,12 @@ async def test_slug_duplicado_da_409(client, db):
 
 
 async def test_login_sem_convite_da_403(client, db, monkeypatch):
+    # Garante que o sistema já tem ao menos uma organização: sem isso, num
+    # Postgres genuinamente vazio (CI, primeiro run), count_organizations()
+    # == 0 e o login cai no bootstrap (cria org, devolve 200) em vez do 403
+    # esperado aqui — o teste passava por acidente localmente só porque o
+    # banco de dev tinha organizações reais de sessões anteriores.
+    await make_org(db)
     fake_google(monkeypatch, rand_email())
     r = await client.post(f"{PREFIX}/auth/google", json={"access_token": "x"})
     assert r.status_code == 403
@@ -231,6 +237,118 @@ async def test_convite_com_papel_invalido_da_422(client, db):
         headers=auth(admin, org_id=org_id),
     )
     assert r.status_code == 422
+
+
+# ── Revogar convite, trocar papel, remover membro (rizoma-backend#11) ───────
+
+
+async def test_revogar_convite(client, db):
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+    inv_id = await make_invitation(db, org_id, rand_email())
+
+    r = await client.delete(f"{PREFIX}/invitations/{inv_id}", headers=auth(admin, org_id=org_id))
+    assert r.status_code == 204
+
+    r = await client.get(f"{PREFIX}/invitations", headers=auth(admin, org_id=org_id))
+    assert r.json() == []
+
+
+async def test_revogar_convite_ja_aceito_da_404(client, db):
+    """Convite aceito virou filiação — não é mais revogável por aqui."""
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+    email = rand_email()
+    inv_id = await make_invitation(db, org_id, email)
+    async with db() as s, s.begin():
+        await s.execute(
+            text("UPDATE invitations SET accepted_at = now() WHERE id = :i"),
+            {"i": str(inv_id)},
+        )
+
+    r = await client.delete(f"{PREFIX}/invitations/{inv_id}", headers=auth(admin, org_id=org_id))
+    assert r.status_code == 404
+
+
+async def test_revogar_convite_de_outra_organizacao_da_404(client, db):
+    """RLS é a rede de segurança, mas o WHERE explícito no repository já
+    barra isso antes mesmo de a policy entrar em jogo."""
+    admin_a = await make_user(db)
+    org_a = await make_org(db, name="Org A")
+    await make_member(db, org_a, admin_a, "org_admin")
+    org_b = await make_org(db, name="Org B")
+    inv_de_b = await make_invitation(db, org_b, rand_email())
+
+    r = await client.delete(f"{PREFIX}/invitations/{inv_de_b}", headers=auth(admin_a, org_id=org_a))
+    assert r.status_code == 404
+
+
+async def test_trocar_papel_de_membro(client, db):
+    admin = await make_user(db)
+    colega = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+    await make_member(db, org_id, colega, "viewer")
+
+    r = await client.patch(
+        f"{PREFIX}/members/{colega}/role",
+        json={"role": "lab_tech"},
+        headers=auth(admin, org_id=org_id),
+    )
+    assert r.status_code == 204
+
+    r = await client.get(f"{PREFIX}/members", headers=auth(admin, org_id=org_id))
+    roles = {m["user_id"]: m["role"] for m in r.json()}
+    assert roles[str(colega)] == "lab_tech"
+
+
+async def test_nao_pode_trocar_o_proprio_papel(client, db):
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+
+    r = await client.patch(
+        f"{PREFIX}/members/{admin}/role",
+        json={"role": "viewer"},
+        headers=auth(admin, org_id=org_id),
+    )
+    assert r.status_code == 400
+
+
+async def test_remover_membro(client, db):
+    admin = await make_user(db)
+    colega = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+    await make_member(db, org_id, colega, "viewer")
+
+    r = await client.delete(f"{PREFIX}/members/{colega}", headers=auth(admin, org_id=org_id))
+    assert r.status_code == 204
+
+    r = await client.get(f"{PREFIX}/members", headers=auth(admin, org_id=org_id))
+    assert str(colega) not in {m["user_id"] for m in r.json()}
+
+
+async def test_nao_pode_se_autorremover(client, db):
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+
+    r = await client.delete(f"{PREFIX}/members/{admin}", headers=auth(admin, org_id=org_id))
+    assert r.status_code == 400
+
+
+async def test_gerenciar_membro_exige_permissao_member_write(client, db):
+    viewer = await make_user(db)
+    colega = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, viewer, "viewer")
+    await make_member(db, org_id, colega, "viewer")
+
+    r = await client.delete(f"{PREFIX}/members/{colega}", headers=auth(viewer, org_id=org_id))
+    assert r.status_code == 403
 
 
 # ── Isolamento entre organizações (o teste que importa) ─────────────────────

@@ -218,6 +218,41 @@ class PgIdentityRepository:
             ) from exc
         return Invitation(**dict(row))
 
+    async def revoke_invitation(self, organization_id: UUID, invitation_id: UUID) -> bool:
+        """`accepted_at IS NULL` no WHERE: convite já aceito não é revogável
+        por aqui — revogar depois de aceito seria mexer em filiação, não em
+        convite (ver remove_member)."""
+        result = await self.session.execute(
+            text(
+                "DELETE FROM invitations "
+                "WHERE id = :i AND organization_id = :o AND accepted_at IS NULL"
+            ),
+            {"i": str(invitation_id), "o": str(organization_id)},
+        )
+        return result.rowcount > 0
+
+    async def update_member_role(
+        self, organization_id: UUID, user_id: UUID, role: str
+    ) -> bool:
+        result = await self.session.execute(
+            text(
+                "UPDATE organization_members SET role = :r "
+                "WHERE organization_id = :o AND user_id = :u"
+            ),
+            {"r": role, "o": str(organization_id), "u": str(user_id)},
+        )
+        return result.rowcount > 0
+
+    async def remove_member(self, organization_id: UUID, user_id: UUID) -> bool:
+        result = await self.session.execute(
+            text(
+                "DELETE FROM organization_members "
+                "WHERE organization_id = :o AND user_id = :u"
+            ),
+            {"o": str(organization_id), "u": str(user_id)},
+        )
+        return result.rowcount > 0
+
     async def list_invitations(self, organization_id: UUID) -> list[Invitation]:
         rows = (
             await self.session.execute(
