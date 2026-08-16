@@ -29,17 +29,20 @@ PERMISSIONS: dict[str, set[str]] = {
         "sample:read", "sample:write", "file:read", "file:write",
         "job:read", "job:write", "result:read", "result:write", "result:review",
         "report:read", "report:write", "report:sign", "member:read", "member:write",
+        "reagent:read", "reagent:write", "equipment:read", "equipment:write",
     },
     "coordinator": {
         "customer:read", "customer:write", "project:read", "project:write",
         "sample:read", "sample:write", "file:read", "file:write",
         "job:read", "job:write", "result:read", "report:read", "report:write",
         "member:read",
+        "reagent:read", "reagent:write", "equipment:read", "equipment:write",
     },
     "tech_responsible": {
         "project:read", "sample:read", "file:read", "job:read",
         "result:read", "result:write", "result:review",
         "report:read", "report:write", "report:sign",
+        "reagent:read", "equipment:read", "equipment:write",
     },
     "field_tech": {
         "project:read", "sample:read", "sample:write", "file:write", "file:read",
@@ -47,6 +50,7 @@ PERMISSIONS: dict[str, set[str]] = {
     "lab_tech": {
         "project:read", "sample:read", "sample:write",
         "result:read", "result:write", "file:read", "file:write",
+        "reagent:read", "reagent:write", "equipment:read",
     },
     "bioinformatician": {
         "project:read", "sample:read", "file:read", "file:write",

@@ -8,6 +8,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.modules.files.router import router as files_router
 from app.modules.identity.router import router as identity_router
+from app.modules.interop.router import router as interop_router
+from app.modules.inventory.router import router as inventory_router
 from app.modules.jobs.reaper import reaper_loop
 from app.modules.jobs.router import router as jobs_router
 from app.modules.laboratory.router import router as lab_router
@@ -59,6 +61,8 @@ app.add_middleware(
 # /api/v2/files/api/v2/files/...
 app.include_router(identity_router, prefix="/api/v2/identity")
 app.include_router(lims_router, prefix="/api/v2/lims")
+app.include_router(inventory_router, prefix="/api/v2/inventory")
+app.include_router(interop_router, prefix="/api/v2/interop")
 app.include_router(files_router)
 app.include_router(jobs_router)
 app.include_router(lab_router)
