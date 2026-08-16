@@ -3,10 +3,16 @@
 As rotas sob /worker NÃO usam JWT: o R Worker não é um usuário, é um processo.
 Autentica com token compartilhado (X-Worker-Token) e trabalha cross-org.
 """
+import asyncio
+import logging
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Response, status
+import asyncpg
+from fastapi import APIRouter, Depends, Query, Response, WebSocket, WebSocketDisconnect, status
+from jose import JWTError
 
+from app.core.config import settings
+from app.core.security import decode_token
 from app.shared.context import Ctx, get_ctx
 
 from . import service
@@ -19,6 +25,8 @@ from .schemas import (
     JobDetailOut,
     JobOut,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v2/jobs", tags=["jobs"])
 
@@ -76,3 +84,46 @@ async def get_job(job_id: UUID, ctx: Ctx = Depends(get_ctx)) -> JobDetailOut:
 @router.post("/{job_id}/cancel", response_model=JobOut)
 async def cancel(job_id: UUID, ctx: Ctx = Depends(get_ctx)) -> JobOut:
     return await service.cancel(ctx, job_id)
+
+
+# ── Status em tempo real ────────────────────────────────────────────────
+# WebSocket nativo do browser não manda Authorization — o token vem como
+# query param. LISTEN é cross-org por natureza (pg_notify não passa pela
+# RLS); o filtro por organização do usuário acontece aqui, na aplicação.
+@router.websocket("/ws/status")
+async def job_status_ws(websocket: WebSocket, token: str = Query(...)) -> None:
+    try:
+        payload = decode_token(token)
+        user_id = UUID(payload["sub"])
+    except (JWTError, KeyError, ValueError):
+        await websocket.close(code=4401)
+        return
+
+    org_ids = await service.get_user_org_ids(user_id)
+    if not org_ids:
+        await websocket.close(code=4403)
+        return
+
+    await websocket.accept()
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue[str] = asyncio.Queue()
+
+    def _on_notify(_connection, _pid, _channel, payload_str: str) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, payload_str)
+
+    conn = await asyncpg.connect(dsn=settings.system_dsn_raw)
+    await conn.add_listener("job_status", _on_notify)
+    try:
+        while True:
+            raw = await queue.get()
+            job_id, job_status, org_id = raw.split(":", 2)
+            if org_id in {str(o) for o in org_ids}:
+                await websocket.send_text(f"status:{job_id}:{job_status}")
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        logger.exception("job_status_ws: encerrando conexão após erro")
+    finally:
+        await conn.remove_listener("job_status", _on_notify)
+        await conn.close()

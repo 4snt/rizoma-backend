@@ -13,9 +13,11 @@ infraestrutura, não de domínio, por isso permanece explícita aqui:
 from uuid import UUID
 
 from fastapi import Header, HTTPException, status
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import settings
+from app.modules.interop.service import dispatch_event
 from app.modules.jobs.domain.entities import AnalysisResult, Job, assert_cancellable, resolve_failure
 from app.modules.jobs.domain.exceptions import JobRunningError, NotCancellableError
 from app.modules.jobs.repository import PgJobRepository
@@ -98,6 +100,20 @@ async def enqueue(ctx: Ctx, req: EnqueueRequest) -> JobOut:
     )
     saved = await repo.create_queued(job)
     return _job_out(saved)
+
+
+async def get_user_org_ids(user_id: UUID) -> set[UUID]:
+    """Orgs do usuário, via papel system (BYPASSRLS) — usado pelo WS de status
+    antes de qualquer contexto de tenant existir (a conexão de LISTEN é global).
+    """
+    async with system_sessionmaker()() as session:
+        rows = (
+            await session.execute(
+                text("SELECT organization_id FROM organization_members WHERE user_id = :u"),
+                {"u": str(user_id)},
+            )
+        ).scalars().all()
+    return {UUID(str(r)) for r in rows}
 
 
 async def list_jobs(ctx: Ctx, project_id: UUID | None, status_filter: str | None) -> list[JobOut]:
@@ -193,6 +209,7 @@ async def complete(job_id: UUID, req: CompleteRequest) -> JobOut:
 
             summary = req.result_summary or {"analysis_type": req.analysis_type}
             job = await repo.mark_completed(job_id, summary)
+        await dispatch_event(session, org_id, "job.completed", {"job_id": str(job_id), "job_type": job.job_type})
     return _job_out(job)
 
 
@@ -222,4 +239,11 @@ async def fail(job_id: UUID, req: FailRequest) -> JobOut:
                 job = await repo.mark_dead_letter(
                     job_id, error_code=decision.error_code, error_message=decision.error_message
                 )
+        # Só dispara webhook na falha DEFINITIVA (dead_letter) — em retry ainda
+        # vai tentar de novo, avisar o assinante agora seria falso-positivo.
+        if decision.status != "retry_scheduled":
+            await dispatch_event(
+                session, job.organization_id, "job.failed",
+                {"job_id": str(job_id), "job_type": job.job_type, "error_code": decision.error_code},
+            )
     return _job_out(job)

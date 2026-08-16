@@ -79,6 +79,19 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
+    @property
+    def system_dsn_raw(self) -> str:
+        """DSN asyncpg cru (não SQLAlchemy) do papel rizoma_system.
+
+        Usado pelo LISTEN de job_status: a conexão de LISTEN é cross-org por
+        natureza (recebe todo NOTIFY do canal, RLS não filtra pg_notify) — o
+        filtro por organização acontece na aplicação, não no banco.
+        """
+        return (
+            f"postgresql://{self.system_db_user}:{self.system_db_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
+
     class Config:
         env_file = ".env"
         extra = "ignore"
