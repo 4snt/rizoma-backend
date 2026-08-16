@@ -134,15 +134,33 @@ async def login_with_google(body: GoogleLoginIn) -> LoginOut:
                 # pessoa do domínio criaria conta sozinha.
                 invite = await repo.find_pending_invitation(email)
                 if invite is None:
-                    raise HTTPException(
-                        status.HTTP_403_FORBIDDEN,
-                        "NotInvited: este e-mail não possui convite pendente. "
-                        "Peça a um administrador que envie um convite.",
+                    # Bootstrap: instalação nova, zero organizações no sistema
+                    # inteiro — não existe admin nenhum pra convidar ninguém, e
+                    # exigir convite aqui travaria o primeiro login pra sempre
+                    # (era exatamente o buraco que o v1, morto, tapava sozinho
+                    # com "primeiro usuário vira admin"; nunca foi portado pro
+                    # v2). Só vale a primeira vez: assim que a org #1 existir,
+                    # cai de novo na exigência normal de convite.
+                    if await repo.count_organizations() == 0:
+                        user_id = await repo.create_user(
+                            email=email, name=name, google_sub=google_sub,
+                            avatar_url=avatar_url, at=now,
+                        )
+                        org = await repo.create_organization(
+                            Organization(id=new_id(), slug="default", name=f"Organização de {name}")
+                        )
+                        await repo.add_member(org.id, user_id, "org_admin")
+                    else:
+                        raise HTTPException(
+                            status.HTTP_403_FORBIDDEN,
+                            "NotInvited: este e-mail não possui convite pendente. "
+                            "Peça a um administrador que envie um convite.",
+                        )
+                else:
+                    user_id = await repo.create_user(
+                        email=email, name=name, google_sub=google_sub, avatar_url=avatar_url, at=now
                     )
-                user_id = await repo.create_user(
-                    email=email, name=name, google_sub=google_sub, avatar_url=avatar_url, at=now
-                )
-                await repo.accept_invitation(invite, user_id, now)
+                    await repo.accept_invitation(invite, user_id, now)
             else:
                 user_id = existing.id
                 await repo.touch_login(

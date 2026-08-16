@@ -100,6 +100,13 @@ class PgIdentityRepository:
         rows = (await self.session.execute(_ORGS_OF_USER, {"u": str(user_id)})).mappings().all()
         return [OrganizationMembership(**dict(r)) for r in rows]
 
+    async def count_organizations(self) -> int:
+        """Cross-org de propósito — só usado pelo bootstrap (login.py) pra
+        decidir se é a primeira organização do sistema. Sessão é a system
+        (BYPASSRLS), então isto conta de verdade, não só o que a RLS deixaria
+        ver via `rizoma.current_org` (que nem existe ainda nesse ponto)."""
+        return (await self.session.execute(text("SELECT count(*) FROM organizations"))).scalar_one()
+
     async def create_organization(self, org: Organization) -> Organization:
         try:
             await self.session.execute(
