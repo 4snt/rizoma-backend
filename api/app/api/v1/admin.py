@@ -7,11 +7,12 @@ from pydantic import BaseModel
 from app.core.auth_deps import require_admin
 from app.core.config import settings
 from app.core.database import get_pool
+from app.shared.ids import new_id
 
 router = APIRouter()
 
 @router.get("/debug/db")
-async def debug_db():
+async def debug_db(_admin: dict = Depends(require_admin)):
     """Diagnostic endpoint to check DB schema and migrations."""
     pool = get_pool()
     results = {}
@@ -162,8 +163,8 @@ async def create_invite(
         try:
             row = await conn.fetchrow(
                 """
-                INSERT INTO invited_users (email, role, invited_by)
-                VALUES ($1, $2, $3)
+                INSERT INTO invited_users (id, email, role, invited_by)
+                VALUES ($1, $2, $3, $4)
                 ON CONFLICT (email) DO UPDATE
                     SET role       = EXCLUDED.role,
                         invited_by = EXCLUDED.invited_by,
@@ -171,6 +172,7 @@ async def create_invite(
                         used_at    = NULL
                 RETURNING id, email, role, invited_at
                 """,
+                new_id(),
                 body.email,
                 body.role,
                 uuid.UUID(admin["user_id"]),

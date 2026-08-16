@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.database import get_pool
 from app.core.google_auth import verify_google_token
 from app.core.security import create_access_token
+from app.shared.ids import new_id
 
 router = APIRouter()
 
@@ -103,8 +104,8 @@ async def login_with_google(body: GoogleLoginRequest):
         # Step 5 — upsert user
         user = await conn.fetchrow(
             """
-            INSERT INTO users (email, name, google_sub, role, avatar_url, last_login)
-            VALUES ($1, $2, $3, $4, $5, NOW())
+            INSERT INTO users (id, email, name, google_sub, role, avatar_url, last_login)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (email) DO UPDATE
                 SET google_sub  = EXCLUDED.google_sub,
                     name        = EXCLUDED.name,
@@ -112,6 +113,7 @@ async def login_with_google(body: GoogleLoginRequest):
                     last_login  = NOW()
             RETURNING id, email, name, role, avatar_url, is_active
             """,
+            new_id(),
             email,
             name,
             google_sub,
