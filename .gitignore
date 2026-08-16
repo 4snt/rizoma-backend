@@ -14,3 +14,8 @@ data/
 *.RData
 .Rhistory
 *.log
+
+# Ferramentas de agente — sempre privado, nunca publicar
+.claude/
+.mcp.json
+CLAUDE.md
