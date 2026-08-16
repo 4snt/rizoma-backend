@@ -20,3 +20,16 @@ class AlreadyMemberError(Exception):
 
 class DuplicateInvitationError(Exception):
     """Já existe convite pendente para este e-mail nesta organização."""
+
+
+class InvitationNotFoundError(Exception):
+    """Convite não existe ou não pertence à organização do chamador."""
+
+
+class MemberNotFoundError(Exception):
+    """Usuário não é membro da organização do chamador."""
+
+
+class CannotRemoveSelfError(Exception):
+    """Admin não pode remover ou rebaixar a própria filiação por este endpoint
+    — evita o próprio admin se trancar pra fora da organização sem querer."""

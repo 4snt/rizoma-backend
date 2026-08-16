@@ -272,3 +272,36 @@ async def create_invitation(ctx: Ctx, body: InvitationCreate) -> InvitationOut:
 async def list_invitations(ctx: Ctx) -> list[InvitationOut]:
     repo = PgIdentityRepository(ctx.session)
     return [InvitationOut(**i.to_dict()) for i in await repo.list_invitations(ctx.org_id)]
+
+
+async def revoke_invitation(ctx: Ctx, invitation_id: UUID) -> None:
+    repo = PgIdentityRepository(ctx.session)
+    if not await repo.revoke_invitation(ctx.org_id, invitation_id):
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND,
+            "Convite não encontrado, já aceito, ou de outra organização.",
+        )
+
+
+async def update_member_role(ctx: Ctx, user_id: UUID, role: str) -> None:
+    if user_id == ctx.user_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Não é possível alterar o próprio papel por aqui — peça a outro "
+            "administrador.",
+        )
+    repo = PgIdentityRepository(ctx.session)
+    if not await repo.update_member_role(ctx.org_id, user_id, role):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Membro não encontrado nesta organização.")
+
+
+async def remove_member(ctx: Ctx, user_id: UUID) -> None:
+    if user_id == ctx.user_id:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "Não é possível remover a própria filiação por aqui — peça a "
+            "outro administrador.",
+        )
+    repo = PgIdentityRepository(ctx.session)
+    if not await repo.remove_member(ctx.org_id, user_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Membro não encontrado nesta organização.")

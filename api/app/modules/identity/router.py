@@ -15,6 +15,7 @@ from app.modules.identity.schemas import (
     InvitationOut,
     LoginOut,
     MemberOut,
+    MemberRoleUpdate,
     MeOut,
     OrganizationCreate,
     OrganizationOut,
@@ -113,3 +114,23 @@ async def create_invitation(
 async def list_invitations(ctx: Ctx = Depends(get_ctx)) -> list[InvitationOut]:
     ctx.require("member:read")
     return await service.list_invitations(ctx)
+
+
+@router.delete("/invitations/{invitation_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def revoke_invitation(invitation_id: UUID, ctx: Ctx = Depends(get_ctx)) -> None:
+    ctx.require("member:write")
+    await service.revoke_invitation(ctx, invitation_id)
+
+
+@router.patch("/members/{user_id}/role", status_code=status.HTTP_204_NO_CONTENT)
+async def update_member_role(
+    user_id: UUID, body: MemberRoleUpdate, ctx: Ctx = Depends(get_ctx)
+) -> None:
+    ctx.require("member:write")
+    await service.update_member_role(ctx, user_id, body.role)
+
+
+@router.delete("/members/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def remove_member(user_id: UUID, ctx: Ctx = Depends(get_ctx)) -> None:
+    ctx.require("member:write")
+    await service.remove_member(ctx, user_id)

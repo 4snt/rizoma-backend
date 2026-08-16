@@ -87,6 +87,19 @@ class InvitationCreate(BaseModel):
         return v
 
 
+class MemberRoleUpdate(BaseModel):
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def _known_role(cls, v: str) -> str:
+        if v not in VALID_ROLES:
+            raise ValueError(
+                f"Papel '{v}' desconhecido. Válidos: {', '.join(sorted(VALID_ROLES))}."
+            )
+        return v
+
+
 class InvitationOut(BaseModel):
     id: UUID
     organization_id: UUID
