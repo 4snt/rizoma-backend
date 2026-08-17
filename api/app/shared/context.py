@@ -25,14 +25,14 @@ _bearer = HTTPBearer()
 # realmente exerce. Os outros do §12.2 entram quando alguém os usar.
 PERMISSIONS: dict[str, set[str]] = {
     "org_admin": {
-        "customer:read", "customer:write", "project:read", "project:write",
+        "project:read", "project:write",
         "sample:read", "sample:write", "file:read", "file:write",
         "job:read", "job:write", "result:read", "result:write", "result:review",
         "report:read", "report:write", "report:sign", "member:read", "member:write",
         "reagent:read", "reagent:write", "equipment:read", "equipment:write",
     },
     "coordinator": {
-        "customer:read", "customer:write", "project:read", "project:write",
+        "project:read", "project:write",
         "sample:read", "sample:write", "file:read", "file:write",
         "job:read", "job:write", "result:read", "report:read", "report:write",
         "member:read",

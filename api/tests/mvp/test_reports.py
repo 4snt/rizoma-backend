@@ -20,7 +20,7 @@ from app.modules.reports.router import router as reports_router
 from app.shared import storage
 from app.shared.ids import new_id
 
-from .conftest import make_member, make_org, make_user, rand_slug
+from .conftest import make_member, make_org, make_user, rand_email, rand_slug
 from .test_laboratory import purge_lab_data
 
 LAB = "/api/v2/lab"
@@ -60,18 +60,29 @@ async def scenario(db):
 
     customer_id, project_id, sample_id = new_id(), new_id(), new_id()
     job_id, ares_id = new_id(), new_id()
+    customer_email = rand_email()
     async with db() as s:
         async with s.begin():
+            # "Pesquisador"/"cliente" agora é sempre um organization_member —
+            # ver ADR de fusão Customer -> User. E-mail via rand_email(): tem
+            # o prefixo que o teardown do conftest sabe limpar; um e-mail
+            # literal ficaria pra sempre no banco (violação global de
+            # users.email já na segunda vez que este teste rodasse).
             await s.execute(
-                text(
-                    "INSERT INTO customers (id, organization_id, name, document, contact_email) "
-                    "VALUES (:i, :o, :n, '98.765.432/0001-10', 'cliente@example.com')"
-                ),
-                {"i": str(customer_id), "o": str(org_id), "n": f"Fazenda {str(customer_id)[:6]}"},
+                text("INSERT INTO users (id, email, name) VALUES (:i, :e, :n)"),
+                {"i": str(customer_id), "e": customer_email,
+                 "n": f"Fazenda {str(customer_id)[:6]}"},
             )
             await s.execute(
                 text(
-                    "INSERT INTO projects (id, organization_id, customer_id, code, name, "
+                    "INSERT INTO organization_members (id, organization_id, user_id, role) "
+                    "VALUES (:i, :o, :u, 'client')"
+                ),
+                {"i": str(new_id()), "o": str(org_id), "u": str(customer_id)},
+            )
+            await s.execute(
+                text(
+                    "INSERT INTO projects (id, organization_id, customer_user_id, code, name, "
                     "description, marker_type, status) "
                     "VALUES (:i, :o, :c, :code, 'INOVAHERB', :d, 'ITS', 'in_progress')"
                 ),
@@ -116,6 +127,7 @@ async def scenario(db):
         "sample_id": sample_id,
         "producer": producer,
         "signer": signer,
+        "customer_email": customer_email,
         "producer_h": headers(producer, "tech_responsible"),
         "signer_h": headers(signer, "org_admin"),
     }
@@ -158,7 +170,7 @@ async def test_cria_laudo_draft_com_snapshot(client, scenario):
 
     content = body["content"]
     assert content["project"]["name"] == "INOVAHERB"
-    assert content["customer"]["contact_email"] == "cliente@example.com"
+    assert content["customer"]["contact_email"] == scenario["customer_email"]
     assert len(content["samples"]) == 1
     # Só o resultado APROVADO entra, e entra como "<0.05" — não como 0, não como null.
     assert len(content["results"]) == 1
@@ -300,7 +312,7 @@ def test_pdf_e_um_pdf_de_verdade():
         "organization": {"name": "Laboratório Rizoma", "cnpj": "12.345.678/0001-90"},
         "project": {"code": "PRJ-1", "name": "INOVAHERB", "description": "Micobioma.",
                     "marker_type": "ITS"},
-        "customer": {"name": "Fazenda X", "document": "123", "contact_email": "a@b.com"},
+        "customer": {"name": "Fazenda X", "contact_email": "a@b.com"},
         "samples": [{"code": "AM-01", "matrix": "solo", "treatment_group": "controle",
                      "replicate": 1, "status": "received", "occurred_at": None}],
         "results": [{"sample_code": "AM-01", "analyte": "Cádmio", "unit": "mg/kg",

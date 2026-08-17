@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.lims.domain.entities import CustodyEvent, Customer, Project, Sample
+from app.modules.lims.domain.entities import CustodyEvent, Project, Sample
 from app.modules.lims.domain.exceptions import DuplicateError
 from app.modules.lims.domain.value_objects import GeoPoint
 
@@ -41,20 +41,6 @@ def _geo_params(geo: GeoPoint | None) -> dict[str, float | None]:
     return {"lat": geo.lat if geo else None, "lon": geo.lon if geo else None}
 
 
-def _customer_from_row(row: dict[str, Any]) -> Customer:
-    return Customer(
-        id=row["id"],
-        organization_id=row["organization_id"],
-        name=row["name"],
-        document=row["document"],
-        contact_email=row["contact_email"],
-        contact_phone=row["contact_phone"],
-        notes=row["notes"],
-        created_by=row["created_by"],
-        created_at=row["created_at"],
-    )
-
-
 def _project_from_row(row: dict[str, Any]) -> Project:
     return Project(
         id=row["id"],
@@ -62,7 +48,7 @@ def _project_from_row(row: dict[str, Any]) -> Project:
         code=row["code"],
         name=row["name"],
         description=row["description"],
-        customer_id=row["customer_id"],
+        customer_user_id=row["customer_user_id"],
         marker_type=row["marker_type"],
         status=row["status"],
         dada2_params=row["dada2_params"] or {},
@@ -110,54 +96,24 @@ def _custody_from_row(row: dict[str, Any]) -> CustodyEvent:
     )
 
 
-class PgCustomerRepository:
-    def __init__(self, session: AsyncSession) -> None:
-        self.session = session
-
-    async def create(self, customer: Customer) -> Customer:
-        try:
-            res = await self.session.execute(
-                text(
-                    """
-                    INSERT INTO customers
-                        (id, organization_id, name, document, contact_email,
-                         contact_phone, notes, created_by)
-                    VALUES (:id, :org, :name, :document, :email, :phone, :notes, :user)
-                    RETURNING *
-                    """
-                ),
-                {
-                    "id": str(customer.id),
-                    "org": str(customer.organization_id),
-                    "name": customer.name,
-                    "document": customer.document,
-                    "email": customer.contact_email,
-                    "phone": customer.contact_phone,
-                    "notes": customer.notes,
-                    "user": str(customer.created_by) if customer.created_by else None,
-                },
-            )
-        except IntegrityError as exc:
-            raise DuplicateError(
-                f"Já existe um cliente chamado '{customer.name}' nesta organização."
-            ) from exc
-        return _customer_from_row(dict(res.mappings().first()))
-
-    async def list_all(self) -> list[Customer]:
-        res = await self.session.execute(text("SELECT * FROM customers ORDER BY created_at"))
-        return [_customer_from_row(dict(r)) for r in res.mappings().all()]
-
-    async def get(self, customer_id: UUID) -> Customer | None:
-        res = await self.session.execute(
-            text("SELECT * FROM customers WHERE id = :id"), {"id": str(customer_id)}
-        )
-        row = res.mappings().first()
-        return _customer_from_row(dict(row)) if row is not None else None
-
-
 class PgProjectRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def customer_is_member(self, organization_id: UUID, user_id: UUID) -> bool:
+        """O 'cliente' de um projeto agora é sempre um membro real da
+        organização — sem isso, `customer_user_id` poderia apontar pra
+        qualquer usuário do sistema, de qualquer org."""
+        row = (
+            await self.session.execute(
+                text(
+                    "SELECT 1 FROM organization_members "
+                    "WHERE organization_id = :o AND user_id = :u"
+                ),
+                {"o": str(organization_id), "u": str(user_id)},
+            )
+        ).first()
+        return row is not None
 
     async def create(self, project: Project) -> Project:
         try:
@@ -165,7 +121,7 @@ class PgProjectRepository:
                 text(
                     """
                     INSERT INTO projects
-                        (id, organization_id, customer_id, code, name, description,
+                        (id, organization_id, customer_user_id, code, name, description,
                          marker_type, dada2_params, analyses, created_by)
                     VALUES (:id, :org, :customer, :code, :name, :description,
                             :marker, CAST(:dada2 AS jsonb), CAST(:analyses AS jsonb), :user)
@@ -175,7 +131,7 @@ class PgProjectRepository:
                 {
                     "id": str(project.id),
                     "org": str(project.organization_id),
-                    "customer": str(project.customer_id) if project.customer_id else None,
+                    "customer": str(project.customer_user_id) if project.customer_user_id else None,
                     "code": project.code,
                     "name": project.name,
                     "description": project.description,
