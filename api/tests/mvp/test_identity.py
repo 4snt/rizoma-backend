@@ -368,8 +368,8 @@ async def test_org_admin_configura_rotulos_de_papel(client, db):
     r = await client.put(
         f"{PREFIX}/organizations/role-labels",
         json={"role_labels": [
-            {"label": "Mestrando", "role": "lab_tech"},
-            {"label": "Graduando", "role": "field_tech"},
+            {"label": "Mestrando", "roles": ["lab_tech"]},
+            {"label": "Graduando", "roles": ["field_tech"]},
         ]},
         headers=auth(admin, org_id=org_id),
     )
@@ -378,13 +378,13 @@ async def test_org_admin_configura_rotulos_de_papel(client, db):
     r = await client.get(f"{PREFIX}/organizations", headers=auth(admin, org_id=org_id))
     assert r.status_code == 200
     assert r.json()[0]["role_labels"] == [
-        {"label": "Mestrando", "role": "lab_tech"},
-        {"label": "Graduando", "role": "field_tech"},
+        {"label": "Mestrando", "roles": ["lab_tech"]},
+        {"label": "Graduando", "roles": ["field_tech"]},
     ]
 
 
-async def test_varios_rotulos_podem_apontar_pro_mesmo_papel(client, db):
-    """Ex.: "Mestrando" e "Doutorando" os dois em lab_tech — não é 1:1."""
+async def test_um_rotulo_pode_agrupar_varios_papeis(client, db):
+    """Ex.: "Bolsista" cobrindo field_tech + lab_tech ao mesmo tempo."""
     admin = await make_user(db)
     org_id = await make_org(db)
     await make_member(db, org_id, admin, "org_admin")
@@ -392,8 +392,29 @@ async def test_varios_rotulos_podem_apontar_pro_mesmo_papel(client, db):
     r = await client.put(
         f"{PREFIX}/organizations/role-labels",
         json={"role_labels": [
-            {"label": "Mestrando", "role": "lab_tech"},
-            {"label": "Doutorando", "role": "lab_tech"},
+            {"label": "Bolsista", "roles": ["field_tech", "lab_tech"]},
+        ]},
+        headers=auth(admin, org_id=org_id),
+    )
+    assert r.status_code == 204, r.text
+
+    r = await client.get(f"{PREFIX}/organizations", headers=auth(admin, org_id=org_id))
+    assert r.json()[0]["role_labels"] == [
+        {"label": "Bolsista", "roles": ["field_tech", "lab_tech"]},
+    ]
+
+
+async def test_varios_rotulos_podem_cobrir_o_mesmo_papel(client, db):
+    """Ex.: "Mestrando" e "Doutorando" os dois cobrindo lab_tech — não é 1:1."""
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+
+    r = await client.put(
+        f"{PREFIX}/organizations/role-labels",
+        json={"role_labels": [
+            {"label": "Mestrando", "roles": ["lab_tech"]},
+            {"label": "Doutorando", "roles": ["lab_tech"]},
         ]},
         headers=auth(admin, org_id=org_id),
     )
@@ -402,7 +423,20 @@ async def test_varios_rotulos_podem_apontar_pro_mesmo_papel(client, db):
     r = await client.get(f"{PREFIX}/organizations", headers=auth(admin, org_id=org_id))
     labels = r.json()[0]["role_labels"]
     assert {e["label"] for e in labels} == {"Mestrando", "Doutorando"}
-    assert all(e["role"] == "lab_tech" for e in labels)
+    assert all(e["roles"] == ["lab_tech"] for e in labels)
+
+
+async def test_rotulo_sem_nenhum_papel_da_422(client, db):
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+
+    r = await client.put(
+        f"{PREFIX}/organizations/role-labels",
+        json={"role_labels": [{"label": "Vazio", "roles": []}]},
+        headers=auth(admin, org_id=org_id),
+    )
+    assert r.status_code == 422
 
 
 async def test_rotulos_com_papel_desconhecido_da_422(client, db):
@@ -412,7 +446,7 @@ async def test_rotulos_com_papel_desconhecido_da_422(client, db):
 
     r = await client.put(
         f"{PREFIX}/organizations/role-labels",
-        json={"role_labels": [{"label": "Chefe", "role": "presidente"}]},
+        json={"role_labels": [{"label": "Chefe", "roles": ["presidente"]}]},
         headers=auth(admin, org_id=org_id),
     )
     assert r.status_code == 422
@@ -425,7 +459,7 @@ async def test_so_org_admin_configura_rotulos(client, db):
 
     r = await client.put(
         f"{PREFIX}/organizations/role-labels",
-        json={"role_labels": [{"label": "Mestrando", "role": "lab_tech"}]},
+        json={"role_labels": [{"label": "Mestrando", "roles": ["lab_tech"]}]},
         headers=auth(coordenador, org_id=org_id),
     )
     assert r.status_code == 403
@@ -440,20 +474,20 @@ async def test_rotulos_substituem_o_catalogo_inteiro(client, db):
     await client.put(
         f"{PREFIX}/organizations/role-labels",
         json={"role_labels": [
-            {"label": "Mestrando", "role": "lab_tech"},
-            {"label": "Graduando", "role": "field_tech"},
+            {"label": "Mestrando", "roles": ["lab_tech"]},
+            {"label": "Graduando", "roles": ["field_tech"]},
         ]},
         headers=auth(admin, org_id=org_id),
     )
     r = await client.put(
         f"{PREFIX}/organizations/role-labels",
-        json={"role_labels": [{"label": "Doutorando", "role": "lab_tech"}]},
+        json={"role_labels": [{"label": "Doutorando", "roles": ["lab_tech"]}]},
         headers=auth(admin, org_id=org_id),
     )
     assert r.status_code == 204
 
     r = await client.get(f"{PREFIX}/organizations", headers=auth(admin, org_id=org_id))
-    assert r.json()[0]["role_labels"] == [{"label": "Doutorando", "role": "lab_tech"}]
+    assert r.json()[0]["role_labels"] == [{"label": "Doutorando", "roles": ["lab_tech"]}]
 
 
 # ── Isolamento entre organizações (o teste que importa) ─────────────────────
