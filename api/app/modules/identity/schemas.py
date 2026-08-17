@@ -27,6 +27,24 @@ class UserOut(BaseModel):
     last_login: datetime | None = None
 
 
+class RoleLabelEntry(BaseModel):
+    """Um rótulo customizado apontando pra um papel técnico. Vários rótulos
+    podem apontar pro mesmo papel (ex.: "Mestrando" e "Doutorando" os dois
+    em lab_tech) — por isso o catálogo é uma lista, não um mapa 1:1."""
+
+    label: str = Field(min_length=1, max_length=80)
+    role: str
+
+    @field_validator("role")
+    @classmethod
+    def _known_role(cls, v: str) -> str:
+        if v not in VALID_ROLES:
+            raise ValueError(
+                f"Papel '{v}' desconhecido. Válidos: {', '.join(sorted(VALID_ROLES))}."
+            )
+        return v
+
+
 class OrganizationOut(BaseModel):
     """Organização na perspectiva de um usuário — por isso carrega o papel dele."""
 
@@ -34,6 +52,10 @@ class OrganizationOut(BaseModel):
     slug: str
     name: str
     role: str
+    # Catálogo de rótulos da org: vários rótulos podem apontar pro mesmo
+    # papel técnico (ex.: "Mestrando" e "Doutorando" os dois em lab_tech).
+    # Papel sem nenhuma entrada aqui usa o rótulo padrão do frontend.
+    role_labels: list[RoleLabelEntry] = Field(default_factory=list)
 
 
 class LoginOut(BaseModel):
@@ -98,6 +120,14 @@ class MemberRoleUpdate(BaseModel):
                 f"Papel '{v}' desconhecido. Válidos: {', '.join(sorted(VALID_ROLES))}."
             )
         return v
+
+
+class RoleLabelsUpdate(BaseModel):
+    """Substitui o catálogo inteiro de rótulos da organização — não é um
+    PATCH incremental. Enviar uma lista menor apaga os rótulos ausentes
+    (o cliente é quem lê o estado atual e reenvia completo)."""
+
+    role_labels: list[RoleLabelEntry]
 
 
 class InvitationOut(BaseModel):

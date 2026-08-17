@@ -2,6 +2,7 @@
 `service.py` só orquestra entidades (e a escolha de qual sessão/engine usar,
 que é infraestrutura, não domínio).
 """
+import json
 from datetime import datetime
 from uuid import UUID
 
@@ -24,7 +25,7 @@ from app.shared.ids import new_id
 
 _ORGS_OF_USER = text(
     """
-    SELECT o.id, o.slug, o.name, m.role
+    SELECT o.id, o.slug, o.name, m.role, o.role_labels
       FROM organization_members m
       JOIN organizations o ON o.id = m.organization_id
      WHERE m.user_id = :u AND o.is_active
@@ -121,6 +122,20 @@ class PgIdentityRepository:
                 f"Já existe uma organização com o slug '{org.slug}'."
             ) from exc
         return org
+
+    async def update_role_labels(
+        self, organization_id: UUID, role_labels: list[dict[str, str]]
+    ) -> bool:
+        """Substitui o catálogo inteiro — não faz merge parcial. O chamador
+        (service.py) já valida que todo `role` de cada entrada é um papel
+        técnico real; aqui é só persistência."""
+        result = await self.session.execute(
+            text(
+                "UPDATE organizations SET role_labels = CAST(:r AS jsonb) WHERE id = :o"
+            ),
+            {"r": json.dumps(role_labels), "o": str(organization_id)},
+        )
+        return result.rowcount > 0
 
     async def add_member(self, organization_id: UUID, user_id: UUID, role: str) -> None:
         await self.session.execute(

@@ -93,7 +93,8 @@ def _user_out(user) -> UserOut:
 
 def _org_out(membership) -> OrganizationOut:
     return OrganizationOut(
-        id=membership.id, slug=membership.slug, name=membership.name, role=membership.role
+        id=membership.id, slug=membership.slug, name=membership.name, role=membership.role,
+        role_labels=membership.role_labels,
     )
 
 
@@ -310,3 +311,20 @@ async def remove_member(ctx: Ctx, user_id: UUID) -> None:
     repo = PgIdentityRepository(ctx.session)
     if not await repo.remove_member(ctx.org_id, user_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Membro não encontrado nesta organização.")
+
+
+# ── 8. Rótulos de papel por organização ──────────────────────────────────────
+
+
+async def update_role_labels(ctx: Ctx, role_labels: list[dict[str, str]]) -> None:
+    """Só org_admin — é configuração da organização inteira, não de um
+    membro. Cada entrada é {"label": ..., "role": ...}; vários rótulos
+    podem apontar pro mesmo papel técnico. O papel em si (VALID_ROLES) já
+    foi validado no schema; aqui só falta persistir."""
+    if ctx.role != "org_admin":
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "Só um administrador da organização pode configurar rótulos de papel.",
+        )
+    repo = PgIdentityRepository(ctx.session)
+    await repo.update_role_labels(ctx.org_id, role_labels)
