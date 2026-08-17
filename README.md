@@ -129,5 +129,6 @@ Estão em [`docs/decisions/`](docs/decisions/), uma por arquivo:
 | [008](docs/decisions/ADR-008-nf-core-ampliseq.md) | nf-core/ampliseq para FASTQ→ASV |
 | [009](docs/decisions/ADR-009-vertical-slices.md) | Fatias verticais, não 8 fases horizontais |
 | [010](docs/decisions/ADR-010-docker-compose-not-k3s.md) | Docker Compose até doer; k3s adiado |
+| [011](docs/decisions/ADR-011-customer-fundido-em-user.md) | Pesquisador (Customer) fundido em User — todo pesquisador é um membro real |
 
 O documento completo: **`RIZOMA_arquitetura_v2.md`**.
