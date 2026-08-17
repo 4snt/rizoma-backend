@@ -24,7 +24,6 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import settings
-from app.core.google_auth import verify_google_token
 from app.core.security import create_access_token
 from app.modules.identity.domain.entities import (
     Invitation,
@@ -37,6 +36,7 @@ from app.modules.identity.domain.exceptions import (
     DuplicateInvitationError,
     SlugTakenError,
 )
+from app.modules.identity.oauth import OAuthProvider
 from app.modules.identity.repository import PgIdentityRepository
 from app.modules.identity.schemas import (
     GoogleLoginIn,
@@ -100,18 +100,23 @@ def _org_out(membership) -> OrganizationOut:
 # ── 1. Login via Google ─────────────────────────────────────────────────────
 
 
-async def login_with_google(body: GoogleLoginIn) -> LoginOut:
+async def login_with_google(body: GoogleLoginIn, provider: OAuthProvider) -> LoginOut:
+    """`provider` é injetado pelo router (Depends(get_oauth_provider)), não
+    instanciado aqui — é essa inversão que permite trocar de provedor OAuth
+    sem tocar nesta função. O nome continua "login_with_google" porque é a
+    única rota que existe hoje (`/auth/google`); quando existir um segundo
+    provedor, generalizar o nome junto da rota nova."""
     try:
-        claims = await verify_google_token(body.access_token, settings.google_client_id)
+        claims = await provider.verify(body.access_token)
     except ValueError as exc:
         raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, f"Token do Google inválido: {exc}"
+            status.HTTP_401_UNAUTHORIZED, f"Token do provedor OAuth inválido: {exc}"
         ) from exc
 
-    email = (claims.get("email") or "").strip().lower()
+    email = claims.email
     if not email:
         raise HTTPException(
-            status.HTTP_401_UNAUTHORIZED, "Google não retornou e-mail para este token."
+            status.HTTP_401_UNAUTHORIZED, "Provedor OAuth não retornou e-mail para este token."
         )
 
     try:
@@ -119,9 +124,9 @@ async def login_with_google(body: GoogleLoginIn) -> LoginOut:
     except DomainNotAllowedError as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc))
 
-    name = claims.get("name") or email.split("@")[0]
-    google_sub = claims.get("sub")
-    avatar_url = claims.get("picture")
+    name = claims.name
+    google_sub = claims.sub
+    avatar_url = claims.avatar_url
     now = datetime.now(timezone.utc)
 
     async with system_sessionmaker()() as s:

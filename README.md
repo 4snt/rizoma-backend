@@ -129,5 +129,6 @@ Estão em [`docs/decisions/`](docs/decisions/), uma por arquivo:
 | [008](docs/decisions/ADR-008-nf-core-ampliseq.md) | nf-core/ampliseq para FASTQ→ASV |
 | [009](docs/decisions/ADR-009-vertical-slices.md) | Fatias verticais, não 8 fases horizontais |
 | [010](docs/decisions/ADR-010-docker-compose-not-k3s.md) | Docker Compose até doer; k3s adiado |
+| [012](docs/decisions/ADR-012-oauth-provider-adapter.md) | Provedor OAuth por trás de um adapter — Google isolado atrás de `OAuthProvider` |
 
 O documento completo: **`RIZOMA_arquitetura_v2.md`**.
