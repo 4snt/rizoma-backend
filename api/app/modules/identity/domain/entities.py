@@ -48,11 +48,14 @@ class Organization:
     name: str
     cnpj: str | None = None
     is_active: bool = True
-    role_labels: dict[str, str] = None  # type: ignore[assignment]
+    # Catálogo de rótulos da organização: lista de {"label": ..., "role": ...}.
+    # Vários rótulos podem apontar pro mesmo papel técnico (ex.: "Mestrando" e
+    # "Doutorando" os dois em lab_tech) — não é um mapa 1:1 papel->rótulo.
+    role_labels: list[dict[str, str]] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.role_labels is None:
-            self.role_labels = {}
+            self.role_labels = []
 
 
 @dataclass
@@ -63,11 +66,11 @@ class OrganizationMembership:
     slug: str
     name: str
     role: str
-    role_labels: dict[str, str] = None  # type: ignore[assignment]
+    role_labels: list[dict[str, str]] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.role_labels is None:
-            self.role_labels = {}
+            self.role_labels = []
 
     def to_dict(self) -> dict:
         return {

@@ -124,11 +124,11 @@ class PgIdentityRepository:
         return org
 
     async def update_role_labels(
-        self, organization_id: UUID, role_labels: dict[str, str]
+        self, organization_id: UUID, role_labels: list[dict[str, str]]
     ) -> bool:
-        """Substitui o mapa inteiro — não faz merge parcial. O chamador
-        (service.py) já valida que toda chave é um papel técnico real; aqui
-        é só persistência."""
+        """Substitui o catálogo inteiro — não faz merge parcial. O chamador
+        (service.py) já valida que todo `role` de cada entrada é um papel
+        técnico real; aqui é só persistência."""
         result = await self.session.execute(
             text(
                 "UPDATE organizations SET role_labels = CAST(:r AS jsonb) WHERE id = :o"

@@ -9,10 +9,13 @@ laboratório organiza por titulação (Graduando/Mestrando/Doutorando), outro
 por função (Estagiário/Técnico/Pesquisador), e o Rizoma não pode embutir
 vocabulário de um lab específico no código.
 
-`organizations.role_labels` é um JSONB simples: chave = papel técnico
-(sempre um dos 8 válidos, sem exceção), valor = rótulo em texto livre que
-essa organização escolheu. Papel sem entrada no mapa cai no rótulo padrão
-(dicionário fixo no frontend) — a organização só sobrescreve o que quiser.
+`organizations.role_labels` é um JSONB array: cada item é
+`{"label": "...", "role": "..."}`. `role` é sempre um dos 8 papéis técnicos
+válidos, sem exceção. Vários rótulos podem apontar pro mesmo papel — não é
+um mapa 1:1 papel->rótulo, porque um laboratório pode querer diferenciar,
+por exemplo, "Mestrando" e "Doutorando" mesmo os dois sendo tecnicamente
+`lab_tech`. Papel sem nenhuma entrada cai no rótulo padrão (dicionário fixo
+no frontend) — a organização só sobrescreve o que quiser.
 
 Revision ID: 0008_organization_role_labels
 Revises: 0007_customer_to_user
@@ -28,7 +31,7 @@ depends_on = None
 def upgrade() -> None:
     op.execute(
         "ALTER TABLE organizations "
-        "ADD COLUMN role_labels jsonb NOT NULL DEFAULT '{}'::jsonb"
+        "ADD COLUMN role_labels jsonb NOT NULL DEFAULT '[]'::jsonb"
     )
 
 

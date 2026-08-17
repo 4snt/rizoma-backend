@@ -144,4 +144,4 @@ async def remove_member(user_id: UUID, ctx: Ctx = Depends(get_ctx)) -> None:
 async def update_role_labels(body: RoleLabelsUpdate, ctx: Ctx = Depends(get_ctx)) -> None:
     """Só org_admin (checado em service.py — é config da org, não uma
     permissão granular do PERMISSIONS)."""
-    await service.update_role_labels(ctx, body.role_labels)
+    await service.update_role_labels(ctx, [e.model_dump() for e in body.role_labels])

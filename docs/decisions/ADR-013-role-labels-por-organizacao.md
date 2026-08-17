@@ -20,19 +20,28 @@ funciona pra um laboratório e é errado pra todos os outros.
 
 ## Decisão
 
-`organizations.role_labels` é um JSONB simples: `{papel_técnico: rótulo}`.
+`organizations.role_labels` é um JSONB **array**, não um mapa 1:1: cada
+item é `{"label": "...", "role": "..."}`. A razão de ser lista e não
+`{papel_técnico: rótulo}` é que **vários rótulos podem apontar pro mesmo
+papel técnico** — o NEBIM quer "Mestrando" e "Doutorando" separados na
+tela mesmo os dois sendo tecnicamente `lab_tech` pra fins de permissão. Um
+mapa por chave-papel não permite duas entradas pro mesmo papel; a lista
+permite.
+
 Só `org_admin` pode escrever (`PUT /api/v2/identity/organizations/role-labels`,
-substitui o mapa inteiro — não é PATCH incremental, o cliente lê o estado
-atual e reenvia completo). Papel sem entrada no mapa cai no rótulo padrão
-em português que já existia — a organização só sobrescreve o que quiser,
-nunca precisa mapear os 8 de uma vez.
+substitui o catálogo inteiro — não é PATCH incremental, o cliente lê o
+estado atual e reenvia completo). Papel sem nenhuma entrada na lista cai
+no rótulo padrão em português que já existia — a organização só
+sobrescreve o que quiser, nunca precisa cadastrar os 8 de uma vez.
 
 O papel técnico em si nunca muda de nome no banco nem no JWT — só o rótulo
 exibido muda. `MemberOut.role` e `InvitationOut.role` continuam devolvendo
-a string técnica (`lab_tech`); é o frontend que resolve
-`role_labels[role] ?? DEFAULT_ROLE_LABEL[role] ?? role` no momento de
-exibir, num único lugar (`lib/role-labels.ts`), nunca hardcoded em cada
-tela que mostra um papel.
+a string técnica (`lab_tech`); é o frontend que resolve o rótulo a exibir
+num único lugar (`lib/role-labels.ts`, `roleLabel()`), nunca hardcoded em
+cada tela que mostra um papel. Quando mais de um rótulo aponta pro mesmo
+papel, `roleLabel()` junta todos (ex.: "Mestrando / Doutorando") — a
+distinção fina por pessoa (qual dos dois um `lab_tech` específico é) fica
+fora de escopo desta ADR, é rótulo por papel, não por membro.
 
 ## Alternativas
 

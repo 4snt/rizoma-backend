@@ -316,10 +316,11 @@ async def remove_member(ctx: Ctx, user_id: UUID) -> None:
 # ── 8. Rótulos de papel por organização ──────────────────────────────────────
 
 
-async def update_role_labels(ctx: Ctx, role_labels: dict[str, str]) -> None:
+async def update_role_labels(ctx: Ctx, role_labels: list[dict[str, str]]) -> None:
     """Só org_admin — é configuração da organização inteira, não de um
-    membro. O papel técnico em si (VALID_ROLES) já foi validado no schema;
-    aqui só falta persistir."""
+    membro. Cada entrada é {"label": ..., "role": ...}; vários rótulos
+    podem apontar pro mesmo papel técnico. O papel em si (VALID_ROLES) já
+    foi validado no schema; aqui só falta persistir."""
     if ctx.role != "org_admin":
         raise HTTPException(
             status.HTTP_403_FORBIDDEN,
