@@ -110,6 +110,19 @@ async def list_samples(ctx: Ctx, project_id: UUID) -> list[dict[str, Any]]:
     return [s.to_dict() for s in await repo.list_by_project(project_id)]
 
 
+async def list_all_samples(ctx: Ctx, project_id: UUID | None) -> list[dict[str, Any]]:
+    """Amostras da organização inteira, `project_id` só como filtro opcional.
+
+    Sem `get_project` de propósito: um `project_id` inválido/de outra org
+    simplesmente não bate em nenhuma linha (RLS + join), em vez de 404 —
+    coerente com "projeto é agregador, não dono" (ver rotas top-level
+    `/samples`, `/results`, `/reports` que espelham esta decisão).
+    """
+    ctx.require("sample:read")
+    repo = PgSampleRepository(ctx.session)
+    return await repo.list_all(project_id)
+
+
 async def get_sample(ctx: Ctx, sample_id: UUID) -> dict[str, Any]:
     repo = PgSampleRepository(ctx.session)
     sample = await repo.get(sample_id)

@@ -97,6 +97,14 @@ async def list_reports(ctx: Ctx, project_id: UUID) -> list[dict]:
     return [r.to_list_item() for r in reports]
 
 
+async def list_all_reports(ctx: Ctx, project_id: UUID | None) -> list[dict]:
+    """Laudos da organização inteira, `project_id` só como filtro opcional
+    (projeto agregador, não dono — ver `lims.list_all_samples`)."""
+    ctx.require("report:read")
+    repo = PgReportRepository(ctx.session)
+    return await repo.list_all(project_id)
+
+
 async def sign_report(ctx: Ctx, report_id: UUID, base_url: str) -> dict:
     """Gera o PDF, calcula o hash, guarda no MinIO e publica.
 

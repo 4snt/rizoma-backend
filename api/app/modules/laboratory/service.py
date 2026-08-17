@@ -76,6 +76,54 @@ async def list_results(ctx: Ctx, sample_id: UUID) -> list[dict]:
     return [await get_result(ctx, result_id) for result_id in ids]
 
 
+async def list_all_results(
+    ctx: Ctx, project_id: UUID | None, sample_id: UUID | None
+) -> list[dict]:
+    """Resultados da organização inteira, só a versão CORRENTE (o histórico
+    completo continua exclusivo de `get_result`/`list_results` na amostra).
+    `project_id`/`sample_id` são filtro opcional — projeto e amostra viram
+    agregador, não pré-requisito de rota (ver `lims.list_all_samples`)."""
+    ctx.require("result:read")
+    repo = PgLabResultRepository(ctx.session)
+    rows = await repo.list_all(project_id, sample_id)
+
+    results = []
+    for row in rows:
+        version = ResultVersion(
+            id=row["version_id"],
+            organization_id=row["version_organization_id"],
+            result_id=row["id"],
+            version=row["version"],
+            value_numeric=row["value_numeric"],
+            value_text=row["value_text"],
+            unit=row["unit"],
+            lod=row["lod"],
+            loq=row["loq"],
+            uncertainty=row["uncertainty"],
+            below_lod=row["below_lod"],
+            status=row["status"],
+            supersedes=row["supersedes"],
+            change_reason=row["change_reason"],
+            created_by=row["created_by"],
+            reviewed_by=row["reviewed_by"],
+            created_at=row["version_created_at"],
+        )
+        results.append(
+            {
+                "id": row["id"],
+                "sample_id": row["sample_id"],
+                "sample_code": row["sample_code"],
+                "project_id": row["project_id"],
+                "project_code": row["project_code"],
+                "analyte": row["analyte"],
+                "method": row["method"],
+                "created_at": row["created_at"],
+                "current": version.to_dict(),
+            }
+        )
+    return results
+
+
 async def correct_result(ctx: Ctx, result_id: UUID, data) -> dict:
     """Versão N+1 apontando para a N. A N continua lá."""
     ctx.require("result:write")

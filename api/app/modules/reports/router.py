@@ -7,12 +7,22 @@ from app.modules.reports import service
 from app.modules.reports.schemas import (
     ReportCreate,
     ReportListItem,
+    ReportListItemAgg,
     ReportOut,
     VerifyOut,
 )
 from app.shared.context import Ctx, get_ctx
 
 router = APIRouter(prefix="/api/v2", tags=["reports"])
+
+
+# Rota top-level: projeto vira agregador (filtro opcional via ?project_id=),
+# não pré-requisito de path — mesma decisão de GET /lims/samples.
+@router.get("/reports", response_model=list[ReportListItemAgg])
+async def list_all_reports(
+    ctx: Ctx = Depends(get_ctx), project_id: UUID | None = None
+) -> list[ReportListItemAgg]:
+    return [ReportListItemAgg(**r) for r in await service.list_all_reports(ctx, project_id)]
 
 
 @router.post(

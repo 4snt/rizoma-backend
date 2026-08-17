@@ -13,6 +13,7 @@ from app.modules.lims.schemas import (
     ProjectOut,
     ProjectStatusUpdate,
     SampleCreate,
+    SampleListItemOut,
     SampleOut,
     SampleTransition,
 )
@@ -55,6 +56,16 @@ async def update_project_status(
 
 
 # ── Amostras ────────────────────────────────────────────────────────────
+# Rota top-level: projeto vira agregador (filtro opcional via ?project_id=),
+# não pré-requisito de path — quem só quer "todas as amostras da org" não
+# precisa saber projeto por projeto (ver rizoma#N — sidebar seção "Amostras").
+@router.get("/samples", response_model=list[SampleListItemOut])
+async def list_all_samples(
+    ctx: CtxDep, project_id: UUID | None = None
+) -> list[SampleListItemOut]:
+    return [SampleListItemOut(**r) for r in await service.list_all_samples(ctx, project_id)]
+
+
 @router.post("/projects/{project_id}/samples", status_code=status.HTTP_201_CREATED)
 async def create_sample(
     project_id: UUID,

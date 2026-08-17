@@ -38,6 +38,15 @@ class ReportListItem(BaseModel):
     created_at: datetime
 
 
+class ReportListItemAgg(ReportListItem):
+    """`ReportListItem` + código/nome do projeto — alimenta a listagem
+    top-level `GET /reports` (projeto agregador, não pré-requisito de rota;
+    ver `/projects/{id}/reports`, que continua existindo)."""
+
+    project_code: str
+    project_name: str
+
+
 class VerifyOut(BaseModel):
     """Resposta PÚBLICA. Só o suficiente para provar autenticidade.
 

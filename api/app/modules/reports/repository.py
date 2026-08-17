@@ -88,6 +88,26 @@ class PgReportRepository:
         )
         return [_from_row(dict(r)) for r in res.mappings().all()]
 
+    async def list_all(self, project_id: UUID | None) -> list[dict[str, Any]]:
+        """Laudos da organização inteira, `project_id` só como filtro
+        opcional — mesma decisão de `lims.list_all`/`laboratory.list_all`:
+        projeto é agregador, não pré-requisito de rota. Uma query só, join
+        com `projects` pro código/nome exibido; RLS isola por organização."""
+        res = await self.session.execute(
+            text(
+                f"""
+                SELECT {', '.join(f'r.{c.strip()}' for c in _COLS.split(','))},
+                       p.code AS project_code, p.name AS project_name
+                FROM reports r
+                JOIN projects p ON p.id = r.project_id
+                WHERE (CAST(:project_id AS uuid) IS NULL OR r.project_id = :project_id)
+                ORDER BY r.created_at DESC
+                """
+            ),
+            {"project_id": str(project_id) if project_id else None},
+        )
+        return [dict(r) for r in res.mappings().all()]
+
     async def sign(
         self,
         report_id: UUID,

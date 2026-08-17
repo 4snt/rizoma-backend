@@ -100,6 +100,16 @@ class SampleOut(BaseModel):
     created_at: datetime
 
 
+class SampleListItemOut(SampleOut):
+    """`SampleOut` + código/nome do projeto — só existe pra alimentar a
+    listagem top-level `GET /samples` (projeto vira agregador exibido, não
+    pré-requisito de rota; ver `/projects/{id}/samples`, que continua
+    existindo pra quem já está no contexto de um projeto)."""
+
+    project_code: str
+    project_name: str
+
+
 class SampleTransition(BaseModel):
     to_status: SampleStatus
     to_custodian: UUID | None = None

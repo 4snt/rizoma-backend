@@ -149,3 +149,47 @@ class PgLabResultRepository:
             {"s": str(sample_id)},
         )
         return [r["id"] for r in res.mappings().all()]
+
+    async def list_all(
+        self, project_id: UUID | None, sample_id: UUID | None
+    ) -> list[dict[str, Any]]:
+        """Resultados da organização inteira, com a versão CORRENTE apenas
+        (histórico completo continua só em `get()`, que é o detalhe da
+        amostra). `project_id`/`sample_id` são filtro opcional, não
+        pré-requisito — mesma decisão de `lims.list_all` e
+        `reports.list_all`: projeto (e amostra) viram agregador, não dono.
+
+        Uma query só: `lab_results` join `samples`/`projects` pro código
+        exibido, join LATERAL pra pegar só a versão de maior número por
+        resultado (sem N+1 por amostra no frontend).
+        """
+        res = await self.session.execute(
+            text(
+                """
+                SELECT
+                    lr.id, lr.sample_id, lr.analyte, lr.method, lr.created_at,
+                    s.code AS sample_code, s.project_id AS project_id,
+                    p.code AS project_code,
+                    rv.id AS version_id, rv.organization_id AS version_organization_id,
+                    rv.version, rv.value_numeric, rv.value_text, rv.unit,
+                    rv.lod, rv.loq, rv.uncertainty, rv.below_lod, rv.status,
+                    rv.supersedes, rv.change_reason, rv.created_by, rv.reviewed_by,
+                    rv.created_at AS version_created_at
+                FROM lab_results lr
+                JOIN samples s ON s.id = lr.sample_id
+                JOIN projects p ON p.id = s.project_id
+                JOIN LATERAL (
+                    SELECT * FROM result_versions
+                    WHERE result_id = lr.id ORDER BY version DESC LIMIT 1
+                ) rv ON true
+                WHERE (CAST(:project_id AS uuid) IS NULL OR s.project_id = :project_id)
+                  AND (CAST(:sample_id AS uuid) IS NULL OR lr.sample_id = :sample_id)
+                ORDER BY lr.created_at DESC
+                """
+            ),
+            {
+                "project_id": str(project_id) if project_id else None,
+                "sample_id": str(sample_id) if sample_id else None,
+            },
+        )
+        return [dict(r) for r in res.mappings().all()]

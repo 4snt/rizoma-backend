@@ -215,6 +215,33 @@ class PgSampleRepository:
         )
         return [_sample_from_row(dict(r)) for r in res.mappings().all()]
 
+    async def list_all(self, project_id: UUID | None) -> list[dict[str, Any]]:
+        """Amostras de toda a organização, projeto opcional só como filtro.
+
+        Projeto deixa de ser pré-requisito pra listar — é agregador, não
+        dono. Uma query só (join com `projects` pro código/nome exibido);
+        RLS já isola por organização, então não precisa repetir
+        `organization_id` aqui — e não é N+1 por projeto no frontend.
+        """
+        res = await self.session.execute(
+            text(
+                """
+                SELECT
+                    s.id, s.organization_id, s.project_id, s.code, s.matrix,
+                    s.treatment_group, s.replicate, s.status, s.collected_by,
+                    s.occurred_at, s.recorded_at, s.notes, s.created_at,
+                    ST_Y(s.geom::geometry) AS lat, ST_X(s.geom::geometry) AS lon,
+                    p.code AS project_code, p.name AS project_name
+                FROM samples s
+                JOIN projects p ON p.id = s.project_id
+                WHERE (CAST(:project_id AS uuid) IS NULL OR s.project_id = :project_id)
+                ORDER BY s.created_at DESC
+                """
+            ),
+            {"project_id": str(project_id) if project_id else None},
+        )
+        return [dict(r) for r in res.mappings().all()]
+
     async def get(self, sample_id: UUID) -> Sample | None:
         res = await self.session.execute(
             text(f"SELECT {_SAMPLE_COLS} FROM samples WHERE id = :id"),

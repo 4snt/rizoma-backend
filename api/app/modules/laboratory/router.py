@@ -7,12 +7,28 @@ from app.modules.laboratory import service
 from app.modules.laboratory.schemas import (
     ResultCorrect,
     ResultCreate,
+    ResultListItemOut,
     ResultOut,
     ResultReview,
 )
 from app.shared.context import Ctx, get_ctx
 
 router = APIRouter(prefix="/api/v2/lab", tags=["laboratory"])
+
+
+# Rota top-level: projeto/amostra viram agregador (filtro opcional via
+# ?project_id=/?sample_id=), não pré-requisito de path — mesma decisão de
+# GET /lims/samples e GET /reports.
+@router.get("/results", response_model=list[ResultListItemOut])
+async def list_all_results(
+    ctx: Ctx = Depends(get_ctx),
+    project_id: UUID | None = None,
+    sample_id: UUID | None = None,
+) -> list[ResultListItemOut]:
+    return [
+        ResultListItemOut(**r)
+        for r in await service.list_all_results(ctx, project_id, sample_id)
+    ]
 
 
 @router.post(

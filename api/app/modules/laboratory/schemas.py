@@ -74,3 +74,21 @@ class ResultOut(BaseModel):
     created_at: datetime
     current: VersionOut
     history: list[VersionOut]
+
+
+class ResultListItemOut(BaseModel):
+    """Só a versão corrente (sem `history`) + código de amostra/projeto —
+    alimenta a listagem top-level `GET /results` (projeto e amostra viram
+    agregador exibido, não pré-requisito de rota; ver
+    `/samples/{id}/results`, que continua existindo pra quem já está no
+    contexto de uma amostra)."""
+
+    id: UUID
+    sample_id: UUID
+    sample_code: str
+    project_id: UUID
+    project_code: str
+    analyte: str
+    method: str | None = None
+    created_at: datetime
+    current: VersionOut
