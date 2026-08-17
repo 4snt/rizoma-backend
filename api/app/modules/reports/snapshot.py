@@ -39,7 +39,7 @@ async def build_snapshot(ctx: Ctx, project_id: UUID, title: str) -> dict[str, An
         await s.execute(
             text(
                 "SELECT p.id, p.code, p.name, p.description, p.marker_type, p.status, "
-                "       p.customer_id, o.name AS org_name, o.cnpj AS org_cnpj "
+                "       p.customer_user_id, o.name AS org_name, o.cnpj AS org_cnpj "
                 "FROM projects p JOIN organizations o ON o.id = p.organization_id "
                 "WHERE p.id = :p"
             ),
@@ -49,15 +49,15 @@ async def build_snapshot(ctx: Ctx, project_id: UUID, title: str) -> dict[str, An
     if project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Projeto não encontrado.")
 
+    # "Pesquisador"/"cliente" agora é sempre um organization_member (conta
+    # Google) — o laudo cita nome e e-mail do usuário, não mais um contato
+    # solto de tabela própria.
     customer = None
-    if project.customer_id:
+    if project.customer_user_id:
         customer = (
             await s.execute(
-                text(
-                    "SELECT name, document, contact_email, contact_phone "
-                    "FROM customers WHERE id = :c"
-                ),
-                {"c": str(project.customer_id)},
+                text("SELECT name, email FROM users WHERE id = :u"),
+                {"u": str(project.customer_user_id)},
             )
         ).first()
 
@@ -126,8 +126,7 @@ async def build_snapshot(ctx: Ctx, project_id: UUID, title: str) -> dict[str, An
         "customer": (
             {
                 "name": customer.name,
-                "document": customer.document,
-                "contact_email": customer.contact_email,
+                "contact_email": customer.email,
             }
             if customer
             else None

@@ -155,12 +155,11 @@ def build_report_pdf(content: dict, code: str, version: int, verify_url: str) ->
         )
     )
 
-    story.append(Paragraph("Cliente", _H2))
+    story.append(Paragraph("Pesquisador", _H2))
     story.append(
         _kv_table(
             [
                 ("Nome", customer.get("name")),
-                ("Documento", customer.get("document")),
                 ("Contato", customer.get("contact_email")),
             ]
         )

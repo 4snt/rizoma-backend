@@ -25,35 +25,16 @@ CustodyEventType = Literal[
 ]
 
 
-# ── Clientes ────────────────────────────────────────────────────────────
-class CustomerCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    document: str | None = None
-    contact_email: str | None = None
-    contact_phone: str | None = None
-    notes: str | None = None
-
-
-class CustomerOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: UUID
-    organization_id: UUID
-    name: str
-    document: str | None = None
-    contact_email: str | None = None
-    contact_phone: str | None = None
-    notes: str | None = None
-    created_by: UUID | None = None
-    created_at: datetime
-
-
 # ── Projetos ────────────────────────────────────────────────────────────
+# Não existe mais CustomerCreate/CustomerOut. O "pesquisador" de um projeto
+# é sempre um organization_member (conta Google, papel real) — gerenciado
+# pelo módulo identity (GET /api/v2/identity/members), não um contato solto
+# criado por aqui.
 class ProjectCreate(BaseModel):
     code: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=200)
     description: str = ""
-    customer_id: UUID | None = None
+    customer_user_id: UUID | None = None
     marker_type: MarkerType | None = None
     dada2_params: dict[str, Any] = Field(default_factory=dict)
     # Catálogo de análise escolhido na criação (ex: [{"analysis_type": "deseq2",
@@ -71,7 +52,7 @@ class ProjectOut(BaseModel):
 
     id: UUID
     organization_id: UUID
-    customer_id: UUID | None = None
+    customer_user_id: UUID | None = None
     code: str
     name: str
     description: str
