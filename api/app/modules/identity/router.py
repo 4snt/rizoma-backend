@@ -20,6 +20,7 @@ from app.modules.identity.schemas import (
     MeOut,
     OrganizationCreate,
     OrganizationOut,
+    RoleLabelsUpdate,
 )
 from app.shared.context import Ctx, get_ctx, get_session
 from app.shared.tenancy import bind_user
@@ -137,3 +138,10 @@ async def update_member_role(
 async def remove_member(user_id: UUID, ctx: Ctx = Depends(get_ctx)) -> None:
     ctx.require("member:write")
     await service.remove_member(ctx, user_id)
+
+
+@router.put("/organizations/role-labels", status_code=status.HTTP_204_NO_CONTENT)
+async def update_role_labels(body: RoleLabelsUpdate, ctx: Ctx = Depends(get_ctx)) -> None:
+    """Só org_admin (checado em service.py — é config da org, não uma
+    permissão granular do PERMISSIONS)."""
+    await service.update_role_labels(ctx, body.role_labels)

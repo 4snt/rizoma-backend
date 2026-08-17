@@ -48,6 +48,11 @@ class Organization:
     name: str
     cnpj: str | None = None
     is_active: bool = True
+    role_labels: dict[str, str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.role_labels is None:
+            self.role_labels = {}
 
 
 @dataclass
@@ -58,9 +63,20 @@ class OrganizationMembership:
     slug: str
     name: str
     role: str
+    role_labels: dict[str, str] = None  # type: ignore[assignment]
+
+    def __post_init__(self) -> None:
+        if self.role_labels is None:
+            self.role_labels = {}
 
     def to_dict(self) -> dict:
-        return {"id": self.id, "slug": self.slug, "name": self.name, "role": self.role}
+        return {
+            "id": self.id,
+            "slug": self.slug,
+            "name": self.name,
+            "role": self.role,
+            "role_labels": self.role_labels,
+        }
 
 
 @dataclass

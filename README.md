@@ -131,5 +131,6 @@ Estão em [`docs/decisions/`](docs/decisions/), uma por arquivo:
 | [010](docs/decisions/ADR-010-docker-compose-not-k3s.md) | Docker Compose até doer; k3s adiado |
 | [011](docs/decisions/ADR-011-customer-fundido-em-user.md) | Pesquisador (Customer) fundido em User — todo pesquisador é um membro real |
 | [012](docs/decisions/ADR-012-oauth-provider-adapter.md) | Provedor OAuth por trás de um adapter — Google isolado atrás de `OAuthProvider` |
+| [013](docs/decisions/ADR-013-role-labels-por-organizacao.md) | Rótulo de papel customizável por organização — papel técnico fixo, nome exibido livre |
 
 O documento completo: **`RIZOMA_arquitetura_v2.md`**.

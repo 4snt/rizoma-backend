@@ -34,6 +34,10 @@ class OrganizationOut(BaseModel):
     slug: str
     name: str
     role: str
+    # Papel técnico (chave) -> rótulo customizado pela organização (valor).
+    # Papel sem entrada aqui usa o rótulo padrão do frontend — a org só
+    # sobrescreve o que quiser (ex.: "lab_tech" -> "Mestrando").
+    role_labels: dict[str, str] = Field(default_factory=dict)
 
 
 class LoginOut(BaseModel):
@@ -96,6 +100,25 @@ class MemberRoleUpdate(BaseModel):
         if v not in VALID_ROLES:
             raise ValueError(
                 f"Papel '{v}' desconhecido. Válidos: {', '.join(sorted(VALID_ROLES))}."
+            )
+        return v
+
+
+class RoleLabelsUpdate(BaseModel):
+    """Substitui o mapa inteiro de rótulos da organização — não é um PATCH
+    incremental. Enviar só as chaves que sobram apaga os rótulos ausentes
+    (o cliente é quem lê o estado atual e reenvia completo)."""
+
+    role_labels: dict[str, str]
+
+    @field_validator("role_labels")
+    @classmethod
+    def _known_roles(cls, v: dict[str, str]) -> dict[str, str]:
+        unknown = set(v) - VALID_ROLES
+        if unknown:
+            raise ValueError(
+                f"Papéis desconhecidos: {', '.join(sorted(unknown))}. "
+                f"Válidos: {', '.join(sorted(VALID_ROLES))}."
             )
         return v
 

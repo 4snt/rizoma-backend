@@ -144,6 +144,7 @@ async def test_login_com_convite_cria_usuario_e_vinculo(client, db, monkeypatch)
             "slug": data["organizations"][0]["slug"],
             "name": "Org Teste",
             "role": "bioinformatician",
+            "role_labels": {},
         }
     ]
 
@@ -354,6 +355,74 @@ async def test_gerenciar_membro_exige_permissao_member_write(client, db):
 
     r = await client.delete(f"{PREFIX}/members/{colega}", headers=auth(viewer, org_id=org_id))
     assert r.status_code == 403
+
+
+# ── Rótulos de papel por organização ────────────────────────────────────────
+
+
+async def test_org_admin_configura_rotulos_de_papel(client, db):
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+
+    r = await client.put(
+        f"{PREFIX}/organizations/role-labels",
+        json={"role_labels": {"lab_tech": "Mestrando", "field_tech": "Graduando"}},
+        headers=auth(admin, org_id=org_id),
+    )
+    assert r.status_code == 204, r.text
+
+    r = await client.get(f"{PREFIX}/organizations", headers=auth(admin, org_id=org_id))
+    assert r.status_code == 200
+    assert r.json()[0]["role_labels"] == {"lab_tech": "Mestrando", "field_tech": "Graduando"}
+
+
+async def test_rotulos_com_papel_desconhecido_da_422(client, db):
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+
+    r = await client.put(
+        f"{PREFIX}/organizations/role-labels",
+        json={"role_labels": {"presidente": "Chefe"}},
+        headers=auth(admin, org_id=org_id),
+    )
+    assert r.status_code == 422
+
+
+async def test_so_org_admin_configura_rotulos(client, db):
+    coordenador = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, coordenador, "coordinator")
+
+    r = await client.put(
+        f"{PREFIX}/organizations/role-labels",
+        json={"role_labels": {"lab_tech": "Mestrando"}},
+        headers=auth(coordenador, org_id=org_id),
+    )
+    assert r.status_code == 403
+
+
+async def test_rotulos_substituem_o_mapa_inteiro(client, db):
+    """PUT, não PATCH — reenviar sem uma chave apaga o rótulo antigo dela."""
+    admin = await make_user(db)
+    org_id = await make_org(db)
+    await make_member(db, org_id, admin, "org_admin")
+
+    await client.put(
+        f"{PREFIX}/organizations/role-labels",
+        json={"role_labels": {"lab_tech": "Mestrando", "field_tech": "Graduando"}},
+        headers=auth(admin, org_id=org_id),
+    )
+    r = await client.put(
+        f"{PREFIX}/organizations/role-labels",
+        json={"role_labels": {"lab_tech": "Doutorando"}},
+        headers=auth(admin, org_id=org_id),
+    )
+    assert r.status_code == 204
+
+    r = await client.get(f"{PREFIX}/organizations", headers=auth(admin, org_id=org_id))
+    assert r.json()[0]["role_labels"] == {"lab_tech": "Doutorando"}
 
 
 # ── Isolamento entre organizações (o teste que importa) ─────────────────────
