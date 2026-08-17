@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_token
 from app.modules.identity import service
+from app.modules.identity.oauth import OAuthProvider, get_oauth_provider
 from app.modules.identity.schemas import (
     GoogleLoginIn,
     InvitationCreate,
@@ -67,8 +68,10 @@ async def get_auth_user(
 
 
 @router.post("/auth/google", response_model=LoginOut)
-async def google_login(body: GoogleLoginIn) -> LoginOut:
-    return await service.login_with_google(body)
+async def google_login(
+    body: GoogleLoginIn, provider: OAuthProvider = Depends(get_oauth_provider)
+) -> LoginOut:
+    return await service.login_with_google(body, provider)
 
 
 @router.get("/me", response_model=MeOut)

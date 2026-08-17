@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import text
 
 from app.core.security import create_access_token
-from app.modules.identity import service
+from app.modules.identity.oauth import GoogleOAuthProvider, OAuthClaims
 from tests.mvp.conftest import (
     PREFIX,
     make_invitation,
@@ -28,16 +28,21 @@ def auth(user_id, role: str = "org_admin", org_id=None) -> dict:
 
 
 def fake_google(monkeypatch, email: str, name: str = "Fulano") -> None:
-    async def _verify(access_token: str, client_id: str) -> dict:
-        return {
-            "sub": f"google-{email}",
-            "email": email,
-            "email_verified": True,
-            "name": name,
-            "picture": "https://example.test/a.png",
-        }
+    """Monkeypatcha o adapter (GoogleOAuthProvider.verify), não uma função
+    solta — é o ponto de injeção real desde a refatoração pra DI (oauth.py).
+    Qualquer instância de GoogleOAuthProvider passa a devolver isto,
+    inclusive a que get_oauth_provider() cria pra cada request."""
 
-    monkeypatch.setattr(service, "verify_google_token", _verify)
+    async def _verify(self, access_token: str) -> OAuthClaims:
+        return OAuthClaims(
+            sub=f"google-{email}",
+            email=email,
+            name=name,
+            avatar_url="https://example.test/a.png",
+            email_verified=True,
+        )
+
+    monkeypatch.setattr(GoogleOAuthProvider, "verify", _verify)
 
 
 # ── Organizações e /me ──────────────────────────────────────────────────────
