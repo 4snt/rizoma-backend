@@ -93,6 +93,11 @@ async def dispatch_event(
 
 # ── Import/export de amostras (CSV) ──────────────────────────────────────
 async def export_samples_csv(ctx: Ctx, project_id: UUID) -> str:
+    # `lims_service.list_samples` não checa papel (a checagem normal mora no
+    # router de lims, não no service) — como aqui a gente chama o service
+    # direto, pulando o router, a checagem tem que ser feita aqui, senão
+    # qualquer membro (até viewer/client) exporta tudo sem essa permissão.
+    ctx.require("sample:read")
     samples = await lims_service.list_samples(ctx, project_id)
     buf = io.StringIO()
     writer = csv.writer(buf)
@@ -107,6 +112,9 @@ async def export_samples_csv(ctx: Ctx, project_id: UUID) -> str:
 
 
 async def import_samples_csv(ctx: Ctx, project_id: UUID, csv_text: str) -> dict[str, Any]:
+    # Mesmo motivo do export: chama lims_service.create_sample direto, sem
+    # passar pelo router de lims onde normalmente mora o ctx.require().
+    ctx.require("sample:write")
     reader = csv.DictReader(io.StringIO(csv_text))
     missing = set(_SAMPLE_CSV_HEADER[:2]) - set(reader.fieldnames or [])
     if missing:
