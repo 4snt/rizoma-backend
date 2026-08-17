@@ -9,8 +9,6 @@ from fastapi.responses import JSONResponse
 from app.modules.lims import service
 from app.modules.lims.schemas import (
     CustodyChainOut,
-    CustomerCreate,
-    CustomerOut,
     ProjectCreate,
     ProjectOut,
     ProjectStatusUpdate,
@@ -24,24 +22,9 @@ router = APIRouter(tags=["lims"])
 
 CtxDep = Annotated[Ctx, Depends(get_ctx)]
 
-
-# ── Clientes ────────────────────────────────────────────────────────────
-@router.post("/customers", response_model=CustomerOut, status_code=status.HTTP_201_CREATED)
-async def create_customer(data: CustomerCreate, ctx: CtxDep) -> CustomerOut:
-    ctx.require("customer:write")
-    return CustomerOut(**await service.create_customer(ctx, data))
-
-
-@router.get("/customers", response_model=list[CustomerOut])
-async def list_customers(ctx: CtxDep) -> list[CustomerOut]:
-    ctx.require("customer:read")
-    return [CustomerOut(**r) for r in await service.list_customers(ctx)]
-
-
-@router.get("/customers/{customer_id}", response_model=CustomerOut)
-async def get_customer(customer_id: UUID, ctx: CtxDep) -> CustomerOut:
-    ctx.require("customer:read")
-    return CustomerOut(**await service.get_customer(ctx, customer_id))
+# Não existe mais /customers aqui. "Pesquisador" de um projeto é sempre um
+# organization_member — usar GET /api/v2/identity/members pra escolher quem
+# já existe, ou POST /api/v2/identity/invitations pra trazer gente nova.
 
 
 # ── Projetos ────────────────────────────────────────────────────────────

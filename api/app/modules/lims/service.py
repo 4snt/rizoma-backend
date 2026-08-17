@@ -13,67 +13,35 @@ from fastapi import HTTPException, status
 from sqlalchemy import text
 
 from app.modules.lims import custody
-from app.modules.lims.domain.entities import CustodyEvent, Customer, Project, Sample
+from app.modules.lims.domain.entities import CustodyEvent, Project, Sample
 from app.modules.lims.domain.exceptions import DuplicateError
 from app.modules.lims.domain.value_objects import GeoPoint
-from app.modules.lims.repository import (
-    PgCustomerRepository,
-    PgProjectRepository,
-    PgSampleRepository,
-)
-from app.modules.lims.schemas import (
-    CustomerCreate,
-    ProjectCreate,
-    SampleCreate,
-    SampleTransition,
-)
+from app.modules.lims.repository import PgProjectRepository, PgSampleRepository
+from app.modules.lims.schemas import ProjectCreate, SampleCreate, SampleTransition
 from app.shared.context import Ctx
 from app.shared.ids import new_id
 
 
-# ── Clientes ────────────────────────────────────────────────────────────
-async def create_customer(ctx: Ctx, data: CustomerCreate) -> dict[str, Any]:
-    repo = PgCustomerRepository(ctx.session)
-    customer = Customer(
-        id=new_id(),
-        organization_id=ctx.org_id,
-        name=data.name,
-        document=data.document,
-        contact_email=data.contact_email,
-        contact_phone=data.contact_phone,
-        notes=data.notes,
-        created_by=ctx.user_id,
-    )
-    try:
-        saved = await repo.create(customer)
-    except DuplicateError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc))
-    return saved.to_dict()
-
-
-async def list_customers(ctx: Ctx) -> list[dict[str, Any]]:
-    repo = PgCustomerRepository(ctx.session)
-    return [c.to_dict() for c in await repo.list_all()]
-
-
-async def get_customer(ctx: Ctx, customer_id: UUID) -> dict[str, Any]:
-    repo = PgCustomerRepository(ctx.session)
-    customer = await repo.get(customer_id)
-    if customer is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Cliente não encontrado.")
-    return customer.to_dict()
-
-
 # ── Projetos ────────────────────────────────────────────────────────────
+# "Pesquisador"/"Cliente" não é mais criado por aqui — é sempre um membro
+# real da organização (conta Google, ver módulo identity). create_project
+# só valida que o customer_user_id apontado já é membro; convidar gente
+# nova é responsabilidade de identity.create_invitation.
 async def create_project(ctx: Ctx, data: ProjectCreate) -> dict[str, Any]:
-    if data.customer_id is not None:
-        await get_customer(ctx, data.customer_id)  # 404 se for de outra org (RLS)
-
     repo = PgProjectRepository(ctx.session)
+
+    if data.customer_user_id is not None:
+        if not await repo.customer_is_member(ctx.org_id, data.customer_user_id):
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "Pesquisador não encontrado — precisa ser membro desta organização "
+                "(ver /api/v2/identity/members ou convide via /api/v2/identity/invitations).",
+            )
+
     project = Project(
         id=new_id(),
         organization_id=ctx.org_id,
-        customer_id=data.customer_id,
+        customer_user_id=data.customer_user_id,
         code=data.code,
         name=data.name,
         description=data.description,

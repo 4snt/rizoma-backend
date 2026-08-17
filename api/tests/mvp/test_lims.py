@@ -86,26 +86,22 @@ async def _make_sample(client, headers, project_id, code="S-01", **extra) -> dic
     return r.json()
 
 
-# ── Fluxo feliz: cliente → projeto → amostra ────────────────────────────
-async def test_customer_project_sample_e_listagem(client, org_admin):
-    _, user_id = org_admin
+# ── Fluxo feliz: pesquisador → projeto → amostra ────────────────────────
+async def test_customer_project_sample_e_listagem(client, org_admin, db):
+    org_id, user_id = org_admin
     h = auth(user_id)
 
-    r = await client.post(
-        f"{PREFIX}/customers",
-        json={"name": "Embrapa", "contact_email": "contato@embrapa.br"},
-        headers=h,
-    )
-    assert r.status_code == 201, r.text
-    customer = r.json()
-    assert customer["name"] == "Embrapa"
+    # "Pesquisador" agora é sempre um membro real da organização — não um
+    # contato solto criado pelo LIMS.
+    pesquisador_id = await make_user(db, name="Embrapa")
+    await make_member(db, org_id, pesquisador_id, "bioinformatician")
 
     r = await client.post(
         f"{PREFIX}/projects",
         json={
             "code": "INOVAHERB",
             "name": "INOVAHERB ITS",
-            "customer_id": customer["id"],
+            "customer_user_id": str(pesquisador_id),
             "marker_type": "ITS",
         },
         headers=h,
@@ -113,7 +109,7 @@ async def test_customer_project_sample_e_listagem(client, org_admin):
     assert r.status_code == 201, r.text
     project = r.json()
     assert project["status"] == "draft"
-    assert project["customer_id"] == customer["id"]
+    assert project["customer_user_id"] == str(pesquisador_id)
 
     sample = await _make_sample(
         client, h, project["id"], code="INV-001",
@@ -126,9 +122,6 @@ async def test_customer_project_sample_e_listagem(client, org_admin):
     # occurred_at (coleta, 9h no campo) != recorded_at (chegada ao servidor).
     assert sample["occurred_at"].startswith("2026-07-01T09:00")
     assert sample["recorded_at"] != sample["occurred_at"]
-
-    r = await client.get(f"{PREFIX}/customers", headers=h)
-    assert [c["id"] for c in r.json()] == [customer["id"]]
 
     r = await client.get(f"{PREFIX}/projects", headers=h)
     assert [p["id"] for p in r.json()] == [project["id"]]
@@ -320,6 +313,8 @@ async def test_papel_sem_permissao_de_escrita_recebe_403(client, db):
     await make_member(db, org_id, user_id, "viewer")
 
     r = await client.post(
-        f"{PREFIX}/customers", json={"name": "X"}, headers=auth(user_id, "viewer")
+        f"{PREFIX}/projects",
+        json={"code": "X", "name": "X"},
+        headers=auth(user_id, "viewer"),
     )
     assert r.status_code == 403

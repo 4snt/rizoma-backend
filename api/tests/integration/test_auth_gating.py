@@ -17,8 +17,8 @@ async def test_list_projects_requires_auth(client):
     assert resp.status_code in UNAUTH
 
 
-async def test_create_customer_requires_auth(client):
-    resp = await client.post("/api/v2/lims/customers", json={"name": "X"})
+async def test_create_project_requires_auth(client):
+    resp = await client.post("/api/v2/lims/projects", json={"code": "X", "name": "X"})
     assert resp.status_code in UNAUTH
 
 

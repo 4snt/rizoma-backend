@@ -1,8 +1,13 @@
-"""Entidades do domínio LIMS: Cliente, Projeto, Amostra e Evento de Custódia.
+"""Entidades do domínio LIMS: Projeto, Amostra e Evento de Custódia.
 
 Dataclasses com identidade e comportamento, no mesmo espírito de
 `app/domain/sample/entities.py` (v1) — não são DTOs de API (isso é
 `schemas.py`) nem linhas de banco (isso é `repository.py`).
+
+Não existe mais entidade Cliente/Pesquisador própria — pesquisador é
+sempre um `organization_member` (conta Google, papel de verdade), gerido
+pelo módulo `identity`. `Project.customer_user_id` referencia esse membro
+diretamente; ver ADR de fusão em docs/decisions/.
 """
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -14,39 +19,13 @@ from app.modules.lims.domain.value_objects import GeoPoint
 
 
 @dataclass
-class Customer:
-    id: UUID
-    organization_id: UUID
-    name: str
-    document: str | None = None
-    contact_email: str | None = None
-    contact_phone: str | None = None
-    notes: str | None = None
-    created_by: UUID | None = None
-    created_at: datetime | None = None
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "organization_id": self.organization_id,
-            "name": self.name,
-            "document": self.document,
-            "contact_email": self.contact_email,
-            "contact_phone": self.contact_phone,
-            "notes": self.notes,
-            "created_by": self.created_by,
-            "created_at": self.created_at,
-        }
-
-
-@dataclass
 class Project:
     id: UUID
     organization_id: UUID
     code: str
     name: str
     description: str = ""
-    customer_id: UUID | None = None
+    customer_user_id: UUID | None = None
     marker_type: str | None = None
     status: str = "draft"
     dada2_params: dict[str, Any] = field(default_factory=dict)
@@ -58,7 +37,7 @@ class Project:
         return {
             "id": self.id,
             "organization_id": self.organization_id,
-            "customer_id": self.customer_id,
+            "customer_user_id": self.customer_user_id,
             "code": self.code,
             "name": self.name,
             "description": self.description,
