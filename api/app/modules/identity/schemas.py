@@ -28,19 +28,23 @@ class UserOut(BaseModel):
 
 
 class RoleLabelEntry(BaseModel):
-    """Um rótulo customizado apontando pra um papel técnico. Vários rótulos
-    podem apontar pro mesmo papel (ex.: "Mestrando" e "Doutorando" os dois
-    em lab_tech) — por isso o catálogo é uma lista, não um mapa 1:1."""
+    """Um rótulo customizado agrupando um ou mais papéis técnicos. Um
+    laboratório pode chamar `field_tech` + `lab_tech` juntos de "Bolsista",
+    por exemplo — por isso `roles` é lista, não um papel único. E o mesmo
+    papel técnico pode aparecer em mais de uma entrada (ex.: "Mestrando" e
+    "Doutorando" os dois cobrindo `lab_tech`)."""
 
     label: str = Field(min_length=1, max_length=80)
-    role: str
+    roles: list[str] = Field(min_length=1)
 
-    @field_validator("role")
+    @field_validator("roles")
     @classmethod
-    def _known_role(cls, v: str) -> str:
-        if v not in VALID_ROLES:
+    def _known_roles(cls, v: list[str]) -> list[str]:
+        unknown = set(v) - VALID_ROLES
+        if unknown:
             raise ValueError(
-                f"Papel '{v}' desconhecido. Válidos: {', '.join(sorted(VALID_ROLES))}."
+                f"Papéis desconhecidos: {', '.join(sorted(unknown))}. "
+                f"Válidos: {', '.join(sorted(VALID_ROLES))}."
             )
         return v
 

@@ -20,27 +20,37 @@ funciona pra um laboratório e é errado pra todos os outros.
 
 ## Decisão
 
-`organizations.role_labels` é um JSONB **array**, não um mapa 1:1: cada
-item é `{"label": "...", "role": "..."}`. A razão de ser lista e não
-`{papel_técnico: rótulo}` é que **vários rótulos podem apontar pro mesmo
-papel técnico** — o NEBIM quer "Mestrando" e "Doutorando" separados na
-tela mesmo os dois sendo tecnicamente `lab_tech` pra fins de permissão. Um
-mapa por chave-papel não permite duas entradas pro mesmo papel; a lista
-permite.
+`organizations.role_labels` é um JSONB **array**: cada item é
+`{"label": "...", "roles": [...]}`. `roles` é lista, não um papel único,
+por dois motivos que uma relação 1:1 papel↔rótulo não cobre:
+
+1. **Um rótulo pode agrupar vários papéis técnicos.** Um laboratório pode
+   chamar `field_tech` + `lab_tech` juntos de "Bolsista", sem se importar
+   com a distinção fina de permissão entre os dois na tela.
+2. **O mesmo papel técnico pode aparecer em mais de um rótulo.** O NEBIM
+   quer "Mestrando" e "Doutorando" separados na tela mesmo os dois sendo
+   tecnicamente `lab_tech`.
+
+Um mapa `{papel: rótulo}` só resolveria o caso 2 invertido (um rótulo por
+papel) e não cobre nenhum dos dois de verdade; a lista de `{label, roles}`
+cobre ambos com a mesma estrutura.
 
 Só `org_admin` pode escrever (`PUT /api/v2/identity/organizations/role-labels`,
 substitui o catálogo inteiro — não é PATCH incremental, o cliente lê o
-estado atual e reenvia completo). Papel sem nenhuma entrada na lista cai
-no rótulo padrão em português que já existia — a organização só
-sobrescreve o que quiser, nunca precisa cadastrar os 8 de uma vez.
+estado atual e reenvia completo). Papel sem nenhuma entrada cobrindo-o cai
+no rótulo padrão em português que já existia — a organização só cadastra
+os rótulos que quiser, nunca precisa cobrir os 8 papéis de uma vez.
 
 O papel técnico em si nunca muda de nome no banco nem no JWT — só o rótulo
 exibido muda. `MemberOut.role` e `InvitationOut.role` continuam devolvendo
 a string técnica (`lab_tech`); é o frontend que resolve o rótulo a exibir
 num único lugar (`lib/role-labels.ts`, `roleLabel()`), nunca hardcoded em
-cada tela que mostra um papel. Quando mais de um rótulo aponta pro mesmo
-papel, `roleLabel()` junta todos (ex.: "Mestrando / Doutorando") — a
-distinção fina por pessoa (qual dos dois um `lab_tech` específico é) fica
+cada tela que mostra um papel. A seleção de quais papéis um rótulo cobre é
+um multi-select genérico (`components/ui/MultiSelect.tsx`) reaproveitável
+em qualquer tela do sistema que precise escolher vários itens de uma
+lista, não uma UI feita só para isto. Quando mais de um rótulo cobre o
+mesmo papel, `roleLabel()` junta todos (ex.: "Mestrando / Doutorando") — a
+distinção fina por pessoa (qual dos rótulos um membro específico usa) fica
 fora de escopo desta ADR, é rótulo por papel, não por membro.
 
 ## Alternativas

@@ -48,10 +48,12 @@ class Organization:
     name: str
     cnpj: str | None = None
     is_active: bool = True
-    # Catálogo de rótulos da organização: lista de {"label": ..., "role": ...}.
-    # Vários rótulos podem apontar pro mesmo papel técnico (ex.: "Mestrando" e
-    # "Doutorando" os dois em lab_tech) — não é um mapa 1:1 papel->rótulo.
-    role_labels: list[dict[str, str]] = None  # type: ignore[assignment]
+    # Catálogo de rótulos da organização: lista de
+    # {"label": ..., "roles": [...]}. Um rótulo pode agrupar mais de um papel
+    # técnico (ex.: "Bolsista" cobrindo field_tech + lab_tech), e o mesmo
+    # papel pode aparecer em mais de uma entrada (ex.: "Mestrando" e
+    # "Doutorando" os dois cobrindo lab_tech) — não é um mapa 1:1.
+    role_labels: list[dict] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.role_labels is None:
@@ -66,7 +68,7 @@ class OrganizationMembership:
     slug: str
     name: str
     role: str
-    role_labels: list[dict[str, str]] = None  # type: ignore[assignment]
+    role_labels: list[dict] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
         if self.role_labels is None:
