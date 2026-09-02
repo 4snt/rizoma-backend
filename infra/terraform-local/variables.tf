@@ -109,6 +109,12 @@ variable "s3_bucket" {
 # ---------------------------------------------------------------------------
 # Auth — Google OAuth (ADR-005), sem senha
 # ---------------------------------------------------------------------------
+variable "enable_r_worker" {
+  description = "Liga o deployment do R Worker (fora de escopo do MVP; integração mantida como débito técnico)"
+  type        = bool
+  default     = false
+}
+
 variable "google_client_id" {
   type      = string
   sensitive = true

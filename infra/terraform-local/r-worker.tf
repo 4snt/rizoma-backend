@@ -1,7 +1,12 @@
 # Sem nodeSelector/toleration de nó nomeado (agent-1) do manifest de
 # referência — aqui é nó único. Sem Service: o worker não recebe requisição,
 # só consome a fila via Postgres LISTEN/NOTIFY.
+# Fora de escopo do MVP (defesa): o worker R fica desligado por padrão.
+# A integração permanece no código como débito técnico — reativar com
+# enable_r_worker = true no terraform.tfvars.
 resource "kubernetes_deployment" "bio_r_worker" {
+  count = var.enable_r_worker ? 1 : 0
+
   metadata {
     name      = "bio-r-worker"
     namespace = kubernetes_namespace.bioinformatica.metadata[0].name

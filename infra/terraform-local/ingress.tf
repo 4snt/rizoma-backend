@@ -15,6 +15,18 @@ resource "kubernetes_ingress_v1" "rizoma" {
     rule {
       host = "rizoma.${var.domain}"
       http {
+        # NextAuth (auth.ts) é servido PELO FRONTEND em /api/auth/* — path mais
+        # longo ganha do Prefix /api abaixo (backend FastAPI, tudo em /api/v2/*).
+        path {
+          path      = "/api/auth"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = kubernetes_service.bio_frontend.metadata[0].name
+              port { number = 3000 }
+            }
+          }
+        }
         path {
           path      = "/api"
           path_type = "Prefix"
