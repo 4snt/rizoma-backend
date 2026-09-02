@@ -132,5 +132,21 @@ Estão em [`docs/decisions/`](docs/decisions/), uma por arquivo:
 | [011](docs/decisions/ADR-011-customer-fundido-em-user.md) | Pesquisador (Customer) fundido em User — todo pesquisador é um membro real |
 | [012](docs/decisions/ADR-012-oauth-provider-adapter.md) | Provedor OAuth por trás de um adapter — Google isolado atrás de `OAuthProvider` |
 | [013](docs/decisions/ADR-013-role-labels-por-organizacao.md) | Rótulo de papel customizável por organização — papel técnico fixo, nome exibido livre |
+| [014](docs/decisions/ADR-014-k3s-para-comparacao-com-senaite.md) | Reversão pontual da ADR-010: k8s local para comparação ao vivo com SENAITE na defesa do TCC |
 
 O documento completo: **`RIZOMA_arquitetura_v2.md`**.
+
+## Deploy k8s local (comparação com SENAITE)
+
+Além do Docker Compose (caminho padrão, ver acima e ADR-010), existe
+[`infra/terraform-local/`](infra/terraform-local/) — Terraform gerenciando um
+deploy completo (Rizoma + SENAITE) num cluster Kubernetes de nó único no
+próprio servidor, para a comparação ao vivo da defesa do TCC (ver ADR-014).
+Não é o caminho de implantação do MVP; é temporário, ligado só para a
+demonstração.
+
+```bash
+cd infra/terraform-local
+cp terraform.tfvars.example terraform.tfvars   # preencher os segredos
+terraform init && terraform apply
+```
