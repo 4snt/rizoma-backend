@@ -1,0 +1,6 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: bioinformatica
+  labels:
+    app.kubernetes.io/part-of: bio-platform

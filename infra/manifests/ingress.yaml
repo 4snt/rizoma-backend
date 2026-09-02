@@ -1,29 +1,54 @@
+# Ingress GKE — HTTPS gerenciado pelo Google (ManagedCertificate)
+# Frontend (Next.js) roda no Vercel — este ingress expõe somente a API.
+
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: bio-api-cert
+  namespace: bioinformatica
+spec:
+  domains:
+    - bioapi.seu-dominio.com   # substitua pelo valor de var.api_external_domain
+
+---
+# IP estático para o Load Balancer (crie antes: gcloud compute addresses create bio-api-ip --global)
+apiVersion: v1
+kind: Service
+metadata:
+  name: bio-api-lb
+  namespace: bioinformatica
+  annotations:
+    cloud.google.com/neg: '{"ingress": true}'
+spec:
+  selector:
+    app: bio-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8000
+  type: ClusterIP
+
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: bio-ingress
   namespace: bioinformatica
   annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "1800"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "1800"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    kubernetes.io/ingress.class: "gce"
+    networking.gke.io/managed-certificates: "bio-api-cert"
+    kubernetes.io/ingress.global-static-ip-name: "bio-api-ip"  # IP criado via gcloud
+    # Timeouts longos para WebSocket e uploads de FASTQ
+    kubernetes.io/ingress.allow-http: "false"
 spec:
-  ingressClassName: nginx
   rules:
-    - host: bio.local
+    - host: bioapi.seu-dominio.com   # substitua pelo var.api_external_domain
       http:
         paths:
-          - path: /api
-            pathType: Prefix
+          - path: /*
+            pathType: ImplementationSpecific
             backend:
               service:
-                name: bio-api
+                name: bio-api-lb
                 port:
-                  number: 8000
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: bio-frontend
-                port:
-                  number: 3000
+                  number: 80

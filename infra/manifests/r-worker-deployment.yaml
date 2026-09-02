@@ -3,8 +3,11 @@ kind: Deployment
 metadata:
   name: bio-r-worker
   namespace: bioinformatica
+  labels:
+    app: bio-r-worker
+    app.kubernetes.io/part-of: bio-platform
 spec:
-  replicas: 1
+  replicas: 1     # R Worker processa um job por vez (LISTEN/NOTIFY é single-connection)
   selector:
     matchLabels:
       app: bio-r-worker
@@ -13,22 +16,33 @@ spec:
       labels:
         app: bio-r-worker
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: agent-1
-      tolerations:
-        - key: "only-r-worker"
-          operator: "Exists"
-          effect: "NoSchedule"
+      serviceAccountName: rizoma-workload
+
       containers:
         - name: bio-r-worker
-          image: ghcr.io/org/bio-rworker:latest
+          image: IMAGE_PLACEHOLDER_RWORKER
           envFrom:
             - secretRef:
-                name: bio-platform-secrets
+                name: bio-secrets
+          env:
+            # R Worker conecta com usuário próprio (role r_worker no PG)
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: bio-secrets
+                  key: POSTGRES_USER_RWORKER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: bio-secrets
+                  key: POSTGRES_PASSWORD_RWORKER
           resources:
             requests:
-              cpu: "500m"
-              memory: "1Gi"
+              cpu: "1000m"
+              memory: "3Gi"   # phyloseq + vegan + ANCOM-BC consomem ~2-3 GB por análise
             limits:
               cpu: "2000m"
-              memory: "4Gi"
+              memory: "6Gi"
+
+          # R Worker não expõe porta HTTP — sem readiness/liveness via HTTP.
+          # O worker se auto-reinicia ao falhar via restart policy do K8s.
