@@ -1,0 +1,22 @@
+# Copie para terraform.tfvars e preencha. Nenhum valor aqui é segredo real.
+#   cp terraform.tfvars.example terraform.tfvars
+
+postgres_password = "troque-isto"
+app_db_password   = "troque-isto"
+system_db_password = "troque-isto"
+
+s3_access_key = "troque-isto"
+s3_secret_key = "troque-isto"
+
+# Google Cloud Console -> APIs & Services -> Credentials (OAuth client ID web)
+google_client_id     = "seu-client-id.apps.googleusercontent.com"
+google_client_secret = "troque-isto"
+
+# openssl rand -hex 32
+jwt_secret   = "troque-isto"
+auth_secret  = "troque-isto"
+# openssl rand -hex 32
+worker_token = "troque-isto"
+
+# openssl rand -hex 16
+senaite_admin_password = "troque-isto"
