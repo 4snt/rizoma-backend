@@ -101,6 +101,14 @@ class PgIdentityRepository:
         rows = (await self.session.execute(_ORGS_OF_USER, {"u": str(user_id)})).mappings().all()
         return [OrganizationMembership(**dict(r)) for r in rows]
 
+    async def get_organization_name(self, organization_id: UUID) -> str | None:
+        return (
+            await self.session.execute(
+                text("SELECT name FROM organizations WHERE id = :o"),
+                {"o": str(organization_id)},
+            )
+        ).scalar_one_or_none()
+
     async def count_organizations(self) -> int:
         """Cross-org de propósito — só usado pelo bootstrap (login.py) pra
         decidir se é a primeira organização do sistema. Sessão é a system

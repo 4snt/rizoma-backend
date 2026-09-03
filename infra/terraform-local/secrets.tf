@@ -39,6 +39,10 @@ resource "kubernetes_secret" "bio_platform_secrets" {
 
     JOB_HEARTBEAT_TIMEOUT_SECONDS = "300"
     JOB_MAX_ATTEMPTS              = "3"
+
+    RESEND_API_KEY    = var.resend_api_key
+    RESEND_FROM_EMAIL = var.resend_from_email != "" ? var.resend_from_email : "Rizoma <convites@mail.${var.domain}>"
+    APP_PUBLIC_URL    = "https://rizoma.${var.domain}"
   }
 }
 

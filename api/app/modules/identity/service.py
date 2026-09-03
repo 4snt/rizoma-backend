@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.config import settings
+from app.core.email import send_invitation_email
 from app.core.security import create_access_token
 from app.modules.identity.domain.entities import (
     Invitation,
@@ -272,6 +273,16 @@ async def create_invitation(ctx: Ctx, body: InvitationCreate) -> InvitationOut:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except DuplicateInvitationError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+
+    inviter = await repo.get_user(ctx.user_id)
+    org_name = await repo.get_organization_name(ctx.org_id)
+    await send_invitation_email(
+        to=email,
+        org_name=org_name or "Rizoma",
+        invited_by_name=inviter.name if inviter else "Um administrador",
+        role=body.role,
+    )
+
     return InvitationOut(**saved.to_dict())
 
 

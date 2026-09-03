@@ -147,3 +147,19 @@ variable "allowed_email_domain" {
   type    = string
   default = "@ufvjm.edu.br"
 }
+
+# ---------------------------------------------------------------------------
+# E-mail transacional (convites) — Resend
+# ---------------------------------------------------------------------------
+variable "resend_api_key" {
+  description = "API key do Resend (escopo de envio já basta). Vazio = envio de e-mail desabilitado."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "resend_from_email" {
+  description = "Remetente do e-mail de convite. Vazio = deriva de var.domain (mesmo padrão de CORS_ORIGINS/S3_PUBLIC_ENDPOINT em secrets.tf: 'convites@mail.<domain>')."
+  type        = string
+  default     = ""
+}

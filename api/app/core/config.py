@@ -48,6 +48,18 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:3000"
 
+    # E-mail transacional (convites) via Resend. Vazio = envio desabilitado
+    # (dev local sem conta Resend) — o convite ainda é criado no banco, só
+    # não dispara e-mail.
+    # Sem valor "de produção" hardcoded aqui de propósito — mesmo padrão do
+    # resto da classe (ex.: google_client_id). O valor real de cada ambiente
+    # vem do secret do Terraform (infra/terraform-local/variables.tf); os
+    # defaults abaixo só cobrem dev local sem .env.
+    resend_api_key: str = ""
+    resend_from_email: str = "Rizoma <convites@localhost>"
+    # URL pública do frontend, usada no link "Entrar" do e-mail de convite.
+    app_public_url: str = "http://localhost:3000"
+
     # Reaper: job cujo worker não bate heartbeat há N segundos volta para a fila.
     job_heartbeat_timeout_seconds: int = 300
     job_max_attempts: int = 3
