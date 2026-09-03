@@ -1,7 +1,6 @@
-name: Deploy homelab (api / r-worker)
+name: Deploy homelab (api)
 
-# Cada serviço builda e faz deploy independente do outro — só dispara pro
-# serviço cujos arquivos mudaram no push. Mesmo fluxo do
+# Só dispara quando os arquivos da API mudam no push. Mesmo fluxo do
 # scripts/deploy-local.sh, disparado por push em vez de rodado à mão.
 on:
   push:
@@ -17,7 +16,6 @@ jobs:
     runs-on: [self-hosted, rizoma-homelab]
     outputs:
       api: ${{ steps.filter.outputs.api }}
-      r_worker: ${{ steps.filter.outputs.r_worker }}
     steps:
       - uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
@@ -26,8 +24,6 @@ jobs:
           filters: |
             api:
               - 'api/**'
-            r_worker:
-              - 'r-worker/**'
 
   deploy-api:
     name: build + import + rollout (bio-api)
@@ -48,25 +44,3 @@ jobs:
           export KUBECONFIG="$HOME/.kube/config-microk8s"
           kubectl -n bioinformatica rollout restart deployment/bio-api
           kubectl -n bioinformatica rollout status deployment/bio-api --timeout=300s
-
-  deploy-r-worker:
-    name: build + import + rollout (bio-r-worker)
-    needs: changes
-    if: needs.changes.outputs.r_worker == 'true'
-    runs-on: [self-hosted, rizoma-homelab]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build da imagem
-        run: docker build -q -t rizoma-rworker:local -t "rizoma-rworker:git-${GITHUB_SHA::7}" r-worker/
-
-      - name: Importar no containerd do microk8s
-        run: docker save rizoma-rworker:local | sudo microk8s ctr --namespace k8s.io images import -
-
-      - name: Rollout do deployment
-        # enable_r_worker é débito técnico (ver infra/terraform-local/variables.tf)
-        # — deployment pode não existir ainda. Não falha o build por isso.
-        run: |
-          export KUBECONFIG="$HOME/.kube/config-microk8s"
-          kubectl -n bioinformatica rollout restart deployment/bio-r-worker || \
-            echo "bio-r-worker não está deployado (enable_r_worker=false) — imagem só ficou pronta no containerd."

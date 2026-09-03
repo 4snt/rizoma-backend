@@ -8,7 +8,6 @@ locals {
     app_db_password    = var.app_db_password
     system_db_password = var.system_db_password
     jwt_secret         = var.jwt_secret
-    worker_token       = var.worker_token
     google_client_secret = var.google_client_secret
     auth_secret          = var.auth_secret
   }

@@ -86,8 +86,8 @@ async def scenario(db):
         async with s.begin():
             await s.execute(
                 text(
-                    "INSERT INTO projects (id, organization_id, code, name, marker_type, status) "
-                    "VALUES (:i, :o, :c, 'INOVAHERB', 'ITS', 'in_progress')"
+                    "INSERT INTO projects (id, organization_id, code, name, status) "
+                    "VALUES (:i, :o, :c, 'INOVAHERB', 'in_progress')"
                 ),
                 {"i": str(project_id), "o": str(org_id), "c": f"PRJ-{str(project_id)[:8]}"},
             )

@@ -1,4 +1,4 @@
-# Consumido por api e r-worker (envFrom secretRef) — nomes de chave iguais ao
+# Consumido pela api (envFrom secretRef) — nomes de chave iguais ao
 # .env.example do backend para manter paridade com o ambiente Compose.
 resource "kubernetes_secret" "bio_platform_secrets" {
   metadata {
@@ -34,11 +34,8 @@ resource "kubernetes_secret" "bio_platform_secrets" {
     JWT_SECRET           = var.jwt_secret
     JWT_ACCESS_MINUTES   = "60"
     JWT_REFRESH_DAYS     = "7"
-    WORKER_TOKEN         = var.worker_token
     ALLOWED_EMAIL_DOMAIN = var.allowed_email_domain
 
-    JOB_HEARTBEAT_TIMEOUT_SECONDS = "300"
-    JOB_MAX_ATTEMPTS              = "3"
 
     RESEND_API_KEY    = var.resend_api_key
     RESEND_FROM_EMAIL = var.resend_from_email != "" ? var.resend_from_email : "Rizoma <convites@mail.${var.domain}>"

@@ -1,7 +1,7 @@
 # ── GKE Autopilot ─────────────────────────────────────────────────────────────
 # Autopilot: sem gerenciamento de nós — Google cuida de escala, patches e HA.
 # Custo: paga por pod (CPU/RAM solicitados), não por nó. Mínimo real: ~$50/mês
-# com os workloads desta plataforma (api + r-worker + elasticsearch).
+# com os workloads desta plataforma (api + elasticsearch).
 
 resource "google_container_cluster" "rizoma" {
   provider = google-beta

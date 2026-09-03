@@ -1,13 +1,17 @@
 # Rizoma — backend
 
-Plataforma de análise de micobioma e transcriptômica (TCC de bioinformática, UFVJM).
+LIMS de laboratório ambiental (TCC de bioinformática, UFVJM): projeto, amostra,
+cadeia de custódia, resultado e laudo.
 
-Este repositório contém a **API** (FastAPI), o **R Worker** (Bioconductor: ANCOM-BC2,
-MaAsLin2, DESeq2, SpiecEasi, phyloseq, vegan) e a infraestrutura de desenvolvimento.
+Este repositório contém a **API** (FastAPI) e a infraestrutura de desenvolvimento.
 
-O banco é PostgreSQL 16 + PostGIS. Os arquivos (FASTQ e artefatos) ficam em object
-storage S3 (MinIO), nunca dentro do banco. A fila de jobs é o próprio Postgres
-(`LISTEN/NOTIFY` + `FOR UPDATE SKIP LOCKED`) — sem Redis, sem Celery.
+O banco é PostgreSQL 16 + PostGIS. Os arquivos ficam em object storage S3
+(MinIO), nunca dentro do banco.
+
+As análises de metagenômica (DADA2, DESeq2, MaAsLin2, ANCOM-BC2, SpiecEasi,
+PICRUSt2, FUNGuild) e o R Worker que as executava foram removidos do escopo:
+o produto começa como LIMS puro. O histórico está no git, e a migration
+`0009_drop_metagenomics_columns` documenta o que saiu do schema.
 
 ---
 
@@ -21,13 +25,6 @@ make logs                 # acompanha
 
 - API: <http://localhost:8000> · docs interativos em `/docs`
 - Console do MinIO: <http://localhost:9001>
-
-O **R Worker fica de fora do `make up`** de propósito: a imagem Bioconductor leva
-cerca de 20 minutos para compilar. Quando precisar dele:
-
-```bash
-make up-worker
-```
 
 `make` sem argumento lista todos os alvos (`migrate`, `migration`, `test`, `psql`,
 `reset`, `seed`, ...).

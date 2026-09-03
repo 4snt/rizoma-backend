@@ -1,11 +1,10 @@
 """Contratos de entrada e saída do módulo LIMS (Pydantic v2)."""
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-MarkerType = Literal["16S", "ITS", "RNA"]
 ProjectStatus = Literal[
     "draft", "planning", "approved", "in_progress",
     "under_review", "completed", "cancelled", "archived",
@@ -35,12 +34,6 @@ class ProjectCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     description: str = ""
     customer_user_id: UUID | None = None
-    marker_type: MarkerType | None = None
-    dada2_params: dict[str, Any] = Field(default_factory=dict)
-    # Catálogo de análise escolhido na criação (ex: [{"analysis_type": "deseq2",
-    # "charts": ["volcano", "ma_plot"]}]) — shape solto de propósito, quem
-    # valida o vocabulário é o frontend (lib/analyses-catalog.ts).
-    analyses: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ProjectStatusUpdate(BaseModel):
@@ -56,10 +49,7 @@ class ProjectOut(BaseModel):
     code: str
     name: str
     description: str
-    marker_type: MarkerType | None = None
     status: ProjectStatus
-    dada2_params: dict[str, Any] = Field(default_factory=dict)
-    analyses: list[dict[str, Any]] = Field(default_factory=list)
     created_by: UUID | None = None
     created_at: datetime
 

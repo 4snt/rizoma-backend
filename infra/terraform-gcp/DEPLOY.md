@@ -62,8 +62,6 @@ kubectl create secret generic bio-secrets \
   --from-literal=POSTGRES_DB=bioinformatica \
   --from-literal=POSTGRES_USER=api_user \
   --from-literal=POSTGRES_PASSWORD=$(terraform output -raw db_api_user_password) \
-  --from-literal=POSTGRES_USER_RWORKER=r_worker \
-  --from-literal=POSTGRES_PASSWORD_RWORKER=$(terraform output -raw db_r_worker_password) \
   --from-literal=ES_HOST=http://elasticsearch:9200 \
   --from-literal=GOOGLE_CLIENT_ID=SEU_CLIENT_ID \
   --from-literal=JWT_SECRET=SEU_JWT_SECRET \
@@ -93,8 +91,6 @@ AR_URL="southamerica-east1-docker.pkg.dev/SEU_PROJETO/bio-platform"
 sed "s|IMAGE_PLACEHOLDER_API|${AR_URL}/bio-platform-api:latest|g" \
   ../manifests/api-deployment.yaml | kubectl apply -f -
 
-sed "s|IMAGE_PLACEHOLDER_RWORKER|${AR_URL}/bio-platform-rworker:latest|g" \
-  ../manifests/r-worker-deployment.yaml | kubectl apply -f -
 
 kubectl apply -f ../manifests/elasticsearch.yaml
 kubectl apply -f ../manifests/ingress.yaml
@@ -126,25 +122,22 @@ git push
 kubectl logs -f deployment/bio-api -n bioinformatica
 
 # Logs do R Worker
-kubectl logs -f deployment/bio-r-worker -n bioinformatica
 
 # Status dos pods
 kubectl get pods -n bioinformatica
 
 # Ver senhas do banco
 terraform output -raw db_api_user_password
-terraform output -raw db_r_worker_password
 
 # Resetar deployment manualmente
 kubectl rollout restart deployment/bio-api -n bioinformatica
-kubectl rollout restart deployment/bio-r-worker -n bioinformatica
 ```
 
 ## Estimativa de custo (southamerica-east1)
 
 | Recurso | Configuração | ~Custo/mês |
 |---------|-------------|------------|
-| GKE Autopilot | api (0.2 CPU/256MB) + r-worker (1 CPU/3GB) + ES (0.5 CPU/1.5GB) | ~$60 |
+| GKE Autopilot | api (0.2 CPU/256MB) + ES (0.5 CPU/1.5GB) | ~$25 |
 | Cloud SQL | db-custom-2-4096, 30GB SSD | ~$75 |
 | Artifact Registry | ~5 imagens × 3 versões × ~500MB | ~$3 |
 | NAT + LB + tráfego | baixo volume acadêmico | ~$15 |

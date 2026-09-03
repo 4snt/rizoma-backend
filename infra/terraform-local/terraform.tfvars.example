@@ -16,7 +16,6 @@ google_client_secret = "troque-isto"
 jwt_secret   = "troque-isto"
 auth_secret  = "troque-isto"
 # openssl rand -hex 32
-worker_token = "troque-isto"
 
 # openssl rand -hex 16
 senaite_admin_password = "troque-isto"

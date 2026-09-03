@@ -50,7 +50,6 @@ jobs:
       S3_SECRET_KEY: rizoma123
       S3_BUCKET: rizoma
       JWT_SECRET: ci-secret-nao-usar-em-producao
-      WORKER_TOKEN: dev-worker-token
 
     steps:
       - uses: actions/checkout@v4

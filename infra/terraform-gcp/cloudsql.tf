@@ -6,11 +6,6 @@ resource "random_password" "db_api_user" {
   special = false   # RPostgres / asyncpg aceitam qualquer char, mas simplicidade first
 }
 
-resource "random_password" "db_r_worker" {
-  length  = 32
-  special = false
-}
-
 resource "random_password" "db_readonly" {
   length  = 32
   special = false
@@ -75,12 +70,6 @@ resource "google_sql_user" "api_user" {
   name     = "api_user"
   instance = google_sql_database_instance.postgres.name
   password = random_password.db_api_user.result
-}
-
-resource "google_sql_user" "r_worker" {
-  name     = "r_worker"
-  instance = google_sql_database_instance.postgres.name
-  password = random_password.db_r_worker.result
 }
 
 resource "google_sql_user" "readonly" {

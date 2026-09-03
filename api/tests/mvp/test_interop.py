@@ -45,7 +45,7 @@ async def org_admin(db):
 async def _make_project(client, headers) -> str:
     r = await client.post(
         f"{LIMS_PREFIX}/projects",
-        json={"code": f"P-{new_id().hex[:6]}", "name": "Interop", "marker_type": "16S"},
+        json={"code": f"P-{new_id().hex[:6]}", "name": "Interop"},
         headers=headers,
     )
     assert r.status_code == 201, r.text

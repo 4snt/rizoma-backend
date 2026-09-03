@@ -1,4 +1,4 @@
-# Sem manifest de referência (infra/manifests/ só tinha api + r-worker +
+# Sem manifest de referência (infra/manifests/ só tinha api +
 # postgres) — criado com base no Dockerfile e no auth.ts do repo 'rizoma'.
 resource "kubernetes_deployment" "bio_frontend" {
   metadata {

@@ -12,7 +12,6 @@ db_master_password = "TROQUE-por-uma-senha-forte"   # openssl rand -base64 24
 
 # ── App / Auth ───────────────────────────────────────────────────────
 jwt_secret           = "TROQUE"   # openssl rand -hex 32
-worker_token         = "TROQUE"   # openssl rand -hex 32
 auth_secret          = "TROQUE"   # openssl rand -hex 32
 google_client_id     = "seu-client-id.apps.googleusercontent.com"
 google_client_secret = "seu-client-secret"

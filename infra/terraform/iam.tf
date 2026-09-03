@@ -35,7 +35,7 @@ resource "aws_iam_role_policy" "execution_ssm" {
 }
 
 # ───────── Task role: identidade que o CÓDIGO usa em runtime. Precisa de S3
-#            (a API assina URLs e faz head/delete; o worker lê objetos). ─────
+#            (a API assina URLs e faz head/delete). ─────
 resource "aws_iam_role" "task" {
   name               = "${local.name}-ecs-task"
   assume_role_policy = data.aws_iam_policy_document.ecs_assume.json

@@ -25,11 +25,6 @@ variable "api_image" {
   default = "rizoma-api:local"
 }
 
-variable "rworker_image" {
-  type    = string
-  default = "rizoma-rworker:local"
-}
-
 variable "frontend_image" {
   type    = string
   default = "rizoma-frontend:local"
@@ -109,12 +104,6 @@ variable "s3_bucket" {
 # ---------------------------------------------------------------------------
 # Auth — Google OAuth (ADR-005), sem senha
 # ---------------------------------------------------------------------------
-variable "enable_r_worker" {
-  description = "Liga o deployment do R Worker (fora de escopo do MVP; integração mantida como débito técnico)"
-  type        = bool
-  default     = false
-}
-
 variable "google_client_id" {
   type      = string
   sensitive = true
@@ -133,12 +122,6 @@ variable "jwt_secret" {
 
 variable "auth_secret" {
   description = "AUTH_SECRET do NextAuth (frontend) — gerar com: openssl rand -hex 32"
-  type        = string
-  sensitive   = true
-}
-
-variable "worker_token" {
-  description = "Autenticação do R Worker na API — gerar com: openssl rand -hex 32"
   type        = string
   sensitive   = true
 }

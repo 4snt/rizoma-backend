@@ -59,7 +59,6 @@ async def scenario(db):
     await make_member(db, org_id, signer, role="org_admin")
 
     customer_id, project_id, sample_id = new_id(), new_id(), new_id()
-    job_id, ares_id = new_id(), new_id()
     customer_email = rand_email()
     async with db() as s:
         async with s.begin():
@@ -83,8 +82,8 @@ async def scenario(db):
             await s.execute(
                 text(
                     "INSERT INTO projects (id, organization_id, customer_user_id, code, name, "
-                    "description, marker_type, status) "
-                    "VALUES (:i, :o, :c, :code, 'INOVAHERB', :d, 'ITS', 'in_progress')"
+                    "description, status) "
+                    "VALUES (:i, :o, :c, :code, 'INOVAHERB', :d, 'in_progress')"
                 ),
                 {"i": str(project_id), "o": str(org_id), "c": str(customer_id),
                  "code": f"PRJ-{str(project_id)[:8]}",
@@ -98,21 +97,6 @@ async def scenario(db):
                 ),
                 {"i": str(sample_id), "o": str(org_id), "p": str(project_id),
                  "c": f"AM-{str(sample_id)[:8]}"},
-            )
-            await s.execute(
-                text(
-                    "INSERT INTO pipeline_jobs (id, organization_id, project_id, job_type, status) "
-                    "VALUES (:i, :o, :p, 'ancombc2', 'completed')"
-                ),
-                {"i": str(job_id), "o": str(org_id), "p": str(project_id)},
-            )
-            await s.execute(
-                text(
-                    "INSERT INTO analysis_results (id, organization_id, job_id, analysis_type, "
-                    "result_data) VALUES (:i, :o, :j, 'ancombc2', CAST(:d AS jsonb))"
-                ),
-                {"i": str(ares_id), "o": str(org_id), "j": str(job_id),
-                 "d": '{"taxa_significativos": 12, "metodo": "ANCOM-BC2"}'},
             )
 
     def headers(user_id, role):
@@ -177,8 +161,6 @@ async def test_cria_laudo_draft_com_snapshot(client, scenario):
     assert content["results"][0]["below_lod"] is True
     assert content["results"][0]["display_value"] == "<0.05"
     assert content["results"][0]["unit"] == "mg/kg"
-    # Bioinformática do job concluído.
-    assert content["bioinformatics"][0]["analysis_type"] == "ancombc2"
 
 
 async def test_laudo_ignora_resultado_nao_aprovado(client, scenario):
@@ -310,15 +292,13 @@ def test_pdf_e_um_pdf_de_verdade():
         "title": "Laudo de teste",
         "generated_at": "2026-07-13T10:00:00+00:00",
         "organization": {"name": "Laboratório Rizoma", "cnpj": "12.345.678/0001-90"},
-        "project": {"code": "PRJ-1", "name": "INOVAHERB", "description": "Micobioma.",
-                    "marker_type": "ITS"},
+        "project": {"code": "PRJ-1", "name": "INOVAHERB", "description": "Micobioma."},
         "customer": {"name": "Fazenda X", "contact_email": "a@b.com"},
         "samples": [{"code": "AM-01", "matrix": "solo", "treatment_group": "controle",
                      "replicate": 1, "status": "received", "occurred_at": None}],
         "results": [{"sample_code": "AM-01", "analyte": "Cádmio", "unit": "mg/kg",
                      "lod": "0.05", "loq": "0.15", "uncertainty": "0.002",
                      "below_lod": True, "display_value": "<0.05", "value_numeric": "0.01"}],
-        "bioinformatics": [{"analysis_type": "ancombc2", "summary": "12 táxons significativos"}],
         "signed_by_name": "Bruno Responsável Técnico",
         "signed_at": "2026-07-13T10:05:00+00:00",
         "content_sha256": "a" * 64,

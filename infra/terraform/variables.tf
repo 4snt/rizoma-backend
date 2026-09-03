@@ -91,12 +91,6 @@ variable "jwt_secret" {
   sensitive   = true
 }
 
-variable "worker_token" {
-  description = "Token compartilhado API <-> R Worker."
-  type        = string
-  sensitive   = true
-}
-
 variable "google_client_id" {
   description = "OAuth2 Google Client ID (usado pela API e pelo frontend)."
   type        = string
@@ -161,21 +155,6 @@ variable "api_memory" {
 }
 
 variable "api_desired_count" {
-  type    = number
-  default = 1
-}
-
-variable "worker_cpu" {
-  type    = number
-  default = 1024
-}
-
-variable "worker_memory" {
-  type    = number
-  default = 4096
-}
-
-variable "worker_desired_count" {
   type    = number
   default = 1
 }

@@ -6,7 +6,7 @@ resource "google_artifact_registry_repository" "bio" {
   location      = var.region
   repository_id = var.ar_repository
   format        = "DOCKER"
-  description   = "Bio-platform container images (api, r-worker, postgres)"
+  description   = "Bio-platform container images (api, postgres)"
   depends_on    = [google_project_service.apis]
 
   cleanup_policies {
