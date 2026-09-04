@@ -232,6 +232,12 @@ class SampleTest:
     sample_id: UUID
     test_name: str
     result: str | None = None
+    # Qualitativo: teste enzimático padrão, resultado em +/-/++/-+/N (ver
+    # `result`). Quantitativo: quando dá pra medir de verdade — usa
+    # `result_value` (numérico) + `result_unit` em vez de `result`.
+    result_type: str | None = None
+    result_value: float | None = None
+    result_unit: str | None = None
     method: str | None = None
     tested_at: date | None = None
     notes: str | None = None
@@ -246,6 +252,9 @@ class SampleTest:
             "sample_id": self.sample_id,
             "test_name": self.test_name,
             "result": self.result,
+            "result_type": self.result_type,
+            "result_value": self.result_value,
+            "result_unit": self.result_unit,
             "method": self.method,
             "tested_at": self.tested_at,
             "notes": self.notes,

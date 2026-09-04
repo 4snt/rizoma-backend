@@ -56,7 +56,8 @@ _CUSTODY_COLS = """
 """
 
 _SAMPLE_TEST_COLS = """
-    id, organization_id, sample_id, test_name, result, method, tested_at,
+    id, organization_id, sample_id, test_name, result, result_type,
+    result_value, result_unit, method, tested_at,
     notes, created_by, created_at, updated_at
 """
 
@@ -142,6 +143,9 @@ def _sample_test_from_row(row: dict[str, Any]) -> SampleTest:
         sample_id=row["sample_id"],
         test_name=row["test_name"],
         result=row["result"],
+        result_type=row["result_type"],
+        result_value=row["result_value"],
+        result_unit=row["result_unit"],
         method=row["method"],
         tested_at=row["tested_at"],
         notes=row["notes"],
@@ -439,9 +443,11 @@ class PgSampleRepository:
             text(
                 f"""
                 INSERT INTO sample_tests
-                    (id, organization_id, sample_id, test_name, result, method,
+                    (id, organization_id, sample_id, test_name, result,
+                     result_type, result_value, result_unit, method,
                      tested_at, notes, created_by)
-                VALUES (:id, :org, :sample, :test_name, :result, :method,
+                VALUES (:id, :org, :sample, :test_name, :result,
+                        :result_type, :result_value, :result_unit, :method,
                         :tested_at, :notes, :user)
                 RETURNING {_SAMPLE_TEST_COLS}
                 """
@@ -452,6 +458,9 @@ class PgSampleRepository:
                 "sample": str(test.sample_id),
                 "test_name": test.test_name,
                 "result": test.result,
+                "result_type": test.result_type,
+                "result_value": test.result_value,
+                "result_unit": test.result_unit,
                 "method": test.method,
                 "tested_at": test.tested_at,
                 "notes": test.notes,

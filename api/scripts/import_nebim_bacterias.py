@@ -98,7 +98,7 @@ def main() -> None:
                         continue
                     tr = client.post(
                         f"/api/v2/lims/samples/{sample_id}/tests",
-                        json={"test_name": column, "result": value},
+                        json={"test_name": column, "result": value, "result_type": "qualitativo"},
                     )
                     if tr.status_code != 201:
                         warnings.append(

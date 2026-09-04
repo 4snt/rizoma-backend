@@ -294,6 +294,12 @@ class CustodyChainOut(BaseModel):
 class SampleTestCreate(BaseModel):
     test_name: str = Field(min_length=1, max_length=120)
     result: str | None = None
+    # 'qualitativo' (+/-/++/-+/N em `result`) ou 'quantitativo'
+    # (`result_value` + `result_unit`). Livre de propósito — sem enum no
+    # banco, mesmo catálogo aberto do `test_name`.
+    result_type: str | None = Field(default=None, max_length=20)
+    result_value: float | None = None
+    result_unit: str | None = Field(default=None, max_length=20)
     method: str | None = None
     tested_at: date | None = None
     notes: str | None = None
@@ -306,6 +312,9 @@ class SampleTestOut(BaseModel):
     sample_id: UUID
     test_name: str
     result: str | None = None
+    result_type: str | None = None
+    result_value: float | None = None
+    result_unit: str | None = None
     method: str | None = None
     tested_at: date | None = None
     notes: str | None = None
