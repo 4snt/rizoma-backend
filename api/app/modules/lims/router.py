@@ -13,8 +13,13 @@ from app.modules.lims.schemas import (
     ProjectOut,
     ProjectStatusUpdate,
     SampleCreate,
+    SampleGeneCreate,
+    SampleGeneOut,
     SampleListItemOut,
+    SampleMorphologyUpdate,
     SampleOut,
+    SampleTestCreate,
+    SampleTestOut,
     SampleTransition,
 )
 from app.shared.context import Ctx, get_ctx
@@ -123,3 +128,44 @@ async def transition_sample(
 async def get_custody_chain(sample_id: UUID, ctx: CtxDep) -> CustodyChainOut:
     ctx.require("sample:read")
     return CustodyChainOut(**await service.get_custody_chain(ctx, sample_id))
+
+
+# ── Dados biológicos ────────────────────────────────────────────────────
+@router.patch("/samples/{sample_id}/morphology", response_model=SampleOut)
+async def update_sample_morphology(
+    sample_id: UUID, data: SampleMorphologyUpdate, ctx: CtxDep
+) -> SampleOut:
+    ctx.require("sample:write")
+    return SampleOut(**await service.update_sample_morphology(ctx, sample_id, data))
+
+
+@router.post(
+    "/samples/{sample_id}/tests", response_model=SampleTestOut, status_code=status.HTTP_201_CREATED
+)
+async def create_sample_test(
+    sample_id: UUID, data: SampleTestCreate, ctx: CtxDep
+) -> SampleTestOut:
+    ctx.require("sample:write")
+    return SampleTestOut(**await service.create_sample_test(ctx, sample_id, data))
+
+
+@router.get("/samples/{sample_id}/tests", response_model=list[SampleTestOut])
+async def list_sample_tests(sample_id: UUID, ctx: CtxDep) -> list[SampleTestOut]:
+    ctx.require("sample:read")
+    return [SampleTestOut(**t) for t in await service.list_sample_tests(ctx, sample_id)]
+
+
+@router.post(
+    "/samples/{sample_id}/genes", response_model=SampleGeneOut, status_code=status.HTTP_201_CREATED
+)
+async def create_sample_gene(
+    sample_id: UUID, data: SampleGeneCreate, ctx: CtxDep
+) -> SampleGeneOut:
+    ctx.require("sample:write")
+    return SampleGeneOut(**await service.create_sample_gene(ctx, sample_id, data))
+
+
+@router.get("/samples/{sample_id}/genes", response_model=list[SampleGeneOut])
+async def list_sample_genes(sample_id: UUID, ctx: CtxDep) -> list[SampleGeneOut]:
+    ctx.require("sample:read")
+    return [SampleGeneOut(**g) for g in await service.list_sample_genes(ctx, sample_id)]

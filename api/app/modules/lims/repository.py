@@ -13,19 +13,40 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.lims.domain.entities import CustodyEvent, Project, Sample
+from app.modules.lims.domain.entities import (
+    CustodyEvent,
+    Project,
+    Sample,
+    SampleGene,
+    SampleTest,
+)
 from app.modules.lims.domain.exceptions import DuplicateError
 from app.modules.lims.domain.value_objects import GeoPoint
 
-_SAMPLE_COLS = """
+_SAMPLE_BIO_COLS = (
+    "organism_type, colonia_forma, colonia_elevacao, colonia_margem, "
+    "colonia_cor, colonia_textura, colonia_tamanho_mm, colonia_opacidade"
+)
+
+_SAMPLE_COLS = f"""
     id, organization_id, project_id, code, matrix, treatment_group, replicate,
     status, collected_by, occurred_at, recorded_at, notes, created_at,
-    ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon
+    ST_Y(geom::geometry) AS lat, ST_X(geom::geometry) AS lon, {_SAMPLE_BIO_COLS}
 """
 
 _CUSTODY_COLS = """
     id, organization_id, sample_id, seq, event_type, from_custodian, to_custodian,
     occurred_at, recorded_at, temperature_c, condition, notes, prev_hash, hash
+"""
+
+_SAMPLE_TEST_COLS = """
+    id, organization_id, sample_id, test_name, result, method, tested_at,
+    notes, created_by, created_at, updated_at
+"""
+
+_SAMPLE_GENE_COLS = """
+    id, organization_id, sample_id, gene, purpose, result, ncbi_accession,
+    method, tested_at, notes, created_by, created_at, updated_at
 """
 
 _GEOM_SQL = (
@@ -70,6 +91,50 @@ def _sample_from_row(row: dict[str, Any]) -> Sample:
         recorded_at=row["recorded_at"],
         notes=row["notes"],
         created_at=row["created_at"],
+        organism_type=row.get("organism_type"),
+        colonia_forma=row.get("colonia_forma"),
+        colonia_elevacao=row.get("colonia_elevacao"),
+        colonia_margem=row.get("colonia_margem"),
+        colonia_cor=row.get("colonia_cor"),
+        colonia_textura=row.get("colonia_textura"),
+        colonia_tamanho_mm=(
+            float(row["colonia_tamanho_mm"]) if row.get("colonia_tamanho_mm") is not None else None
+        ),
+        colonia_opacidade=row.get("colonia_opacidade"),
+    )
+
+
+def _sample_test_from_row(row: dict[str, Any]) -> SampleTest:
+    return SampleTest(
+        id=row["id"],
+        organization_id=row["organization_id"],
+        sample_id=row["sample_id"],
+        test_name=row["test_name"],
+        result=row["result"],
+        method=row["method"],
+        tested_at=row["tested_at"],
+        notes=row["notes"],
+        created_by=row["created_by"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _sample_gene_from_row(row: dict[str, Any]) -> SampleGene:
+    return SampleGene(
+        id=row["id"],
+        organization_id=row["organization_id"],
+        sample_id=row["sample_id"],
+        gene=row["gene"],
+        purpose=row["purpose"],
+        result=row["result"],
+        ncbi_accession=row["ncbi_accession"],
+        method=row["method"],
+        tested_at=row["tested_at"],
+        notes=row["notes"],
+        created_by=row["created_by"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
     )
 
 
@@ -173,9 +238,13 @@ class PgSampleRepository:
                     f"""
                     INSERT INTO samples
                         (id, organization_id, project_id, code, matrix, treatment_group,
-                         replicate, status, geom, collected_by, occurred_at, notes)
+                         replicate, status, geom, collected_by, occurred_at, notes,
+                         organism_type, colonia_forma, colonia_elevacao, colonia_margem,
+                         colonia_cor, colonia_textura, colonia_tamanho_mm, colonia_opacidade)
                     VALUES (:id, :org, :project, :code, :matrix, :group, :replicate,
-                            :status, {_GEOM_SQL}, :user, :occurred_at, :notes)
+                            :status, {_GEOM_SQL}, :user, :occurred_at, :notes,
+                            :organism_type, :colonia_forma, :colonia_elevacao, :colonia_margem,
+                            :colonia_cor, :colonia_textura, :colonia_tamanho_mm, :colonia_opacidade)
                     RETURNING {_SAMPLE_COLS}
                     """
                 ),
@@ -192,6 +261,14 @@ class PgSampleRepository:
                     "user": str(sample.collected_by) if sample.collected_by else None,
                     "occurred_at": sample.occurred_at,
                     "notes": sample.notes,
+                    "organism_type": sample.organism_type,
+                    "colonia_forma": sample.colonia_forma,
+                    "colonia_elevacao": sample.colonia_elevacao,
+                    "colonia_margem": sample.colonia_margem,
+                    "colonia_cor": sample.colonia_cor,
+                    "colonia_textura": sample.colonia_textura,
+                    "colonia_tamanho_mm": sample.colonia_tamanho_mm,
+                    "colonia_opacidade": sample.colonia_opacidade,
                 },
             )
         except IntegrityError as exc:
@@ -223,6 +300,8 @@ class PgSampleRepository:
                     s.treatment_group, s.replicate, s.status, s.collected_by,
                     s.occurred_at, s.recorded_at, s.notes, s.created_at,
                     ST_Y(s.geom::geometry) AS lat, ST_X(s.geom::geometry) AS lon,
+                    s.organism_type, s.colonia_forma, s.colonia_elevacao, s.colonia_margem,
+                    s.colonia_cor, s.colonia_textura, s.colonia_tamanho_mm, s.colonia_opacidade,
                     p.code AS project_code, p.name AS project_name
                 FROM samples s
                 JOIN projects p ON p.id = s.project_id
@@ -261,6 +340,93 @@ class PgSampleRepository:
         )
         row = res.mappings().first()
         return _sample_from_row(dict(row)) if row is not None else None
+
+    async def update_morphology(self, sample_id: UUID, fields: dict[str, Any]) -> Sample | None:
+        """UPDATE parcial dos campos biológicos — só grava o que veio em
+        `fields` (chaves de `SampleMorphologyUpdate` com valor setado)."""
+        if not fields:
+            return await self.get(sample_id)
+        assignments = ", ".join(f"{col} = :{col}" for col in fields)
+        res = await self.session.execute(
+            text(f"UPDATE samples SET {assignments} WHERE id = :id RETURNING {_SAMPLE_COLS}"),
+            {**fields, "id": str(sample_id)},
+        )
+        row = res.mappings().first()
+        return _sample_from_row(dict(row)) if row is not None else None
+
+    async def create_test(self, test: SampleTest) -> SampleTest:
+        res = await self.session.execute(
+            text(
+                f"""
+                INSERT INTO sample_tests
+                    (id, organization_id, sample_id, test_name, result, method,
+                     tested_at, notes, created_by)
+                VALUES (:id, :org, :sample, :test_name, :result, :method,
+                        :tested_at, :notes, :user)
+                RETURNING {_SAMPLE_TEST_COLS}
+                """
+            ),
+            {
+                "id": str(test.id),
+                "org": str(test.organization_id),
+                "sample": str(test.sample_id),
+                "test_name": test.test_name,
+                "result": test.result,
+                "method": test.method,
+                "tested_at": test.tested_at,
+                "notes": test.notes,
+                "user": str(test.created_by) if test.created_by else None,
+            },
+        )
+        return _sample_test_from_row(dict(res.mappings().first()))
+
+    async def list_tests(self, sample_id: UUID) -> list[SampleTest]:
+        res = await self.session.execute(
+            text(
+                f"SELECT {_SAMPLE_TEST_COLS} FROM sample_tests "
+                "WHERE sample_id = :s ORDER BY created_at"
+            ),
+            {"s": str(sample_id)},
+        )
+        return [_sample_test_from_row(dict(r)) for r in res.mappings().all()]
+
+    async def create_gene(self, gene: SampleGene) -> SampleGene:
+        res = await self.session.execute(
+            text(
+                f"""
+                INSERT INTO sample_genes
+                    (id, organization_id, sample_id, gene, purpose, result,
+                     ncbi_accession, method, tested_at, notes, created_by)
+                VALUES (:id, :org, :sample, :gene, :purpose, :result,
+                        :ncbi_accession, :method, :tested_at, :notes, :user)
+                RETURNING {_SAMPLE_GENE_COLS}
+                """
+            ),
+            {
+                "id": str(gene.id),
+                "org": str(gene.organization_id),
+                "sample": str(gene.sample_id),
+                "gene": gene.gene,
+                "purpose": gene.purpose,
+                "result": gene.result,
+                "ncbi_accession": gene.ncbi_accession,
+                "method": gene.method,
+                "tested_at": gene.tested_at,
+                "notes": gene.notes,
+                "user": str(gene.created_by) if gene.created_by else None,
+            },
+        )
+        return _sample_gene_from_row(dict(res.mappings().first()))
+
+    async def list_genes(self, sample_id: UUID) -> list[SampleGene]:
+        res = await self.session.execute(
+            text(
+                f"SELECT {_SAMPLE_GENE_COLS} FROM sample_genes "
+                "WHERE sample_id = :s ORDER BY created_at"
+            ),
+            {"s": str(sample_id)},
+        )
+        return [_sample_gene_from_row(dict(r)) for r in res.mappings().all()]
 
     async def last_custody_event(self, sample_id: UUID) -> CustodyEvent | None:
         res = await self.session.execute(

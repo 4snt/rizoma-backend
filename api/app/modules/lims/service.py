@@ -13,11 +13,24 @@ from fastapi import HTTPException, status
 from sqlalchemy import text
 
 from app.modules.lims import custody
-from app.modules.lims.domain.entities import CustodyEvent, Project, Sample
+from app.modules.lims.domain.entities import (
+    CustodyEvent,
+    Project,
+    Sample,
+    SampleGene,
+    SampleTest,
+)
 from app.modules.lims.domain.exceptions import DuplicateError
 from app.modules.lims.domain.value_objects import GeoPoint
 from app.modules.lims.repository import PgProjectRepository, PgSampleRepository
-from app.modules.lims.schemas import ProjectCreate, SampleCreate, SampleTransition
+from app.modules.lims.schemas import (
+    ProjectCreate,
+    SampleCreate,
+    SampleGeneCreate,
+    SampleMorphologyUpdate,
+    SampleTestCreate,
+    SampleTransition,
+)
 from app.shared.context import Ctx
 from app.shared.ids import new_id
 
@@ -93,6 +106,14 @@ async def create_sample(ctx: Ctx, project_id: UUID, data: SampleCreate) -> dict[
         collected_by=ctx.user_id,
         occurred_at=data.occurred_at,
         notes=data.notes,
+        organism_type=data.organism_type,
+        colonia_forma=data.colonia_forma,
+        colonia_elevacao=data.colonia_elevacao,
+        colonia_margem=data.colonia_margem,
+        colonia_cor=data.colonia_cor,
+        colonia_textura=data.colonia_textura,
+        colonia_tamanho_mm=data.colonia_tamanho_mm,
+        colonia_opacidade=data.colonia_opacidade,
     )
     try:
         saved = await repo.create(sample)
@@ -126,6 +147,71 @@ async def get_sample(ctx: Ctx, sample_id: UUID) -> dict[str, Any]:
     if sample is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Amostra não encontrada.")
     return sample.to_dict()
+
+
+# ── Dados biológicos ────────────────────────────────────────────────────
+async def update_sample_morphology(
+    ctx: Ctx, sample_id: UUID, data: SampleMorphologyUpdate
+) -> dict[str, Any]:
+    await get_sample(ctx, sample_id)  # 404 se não existe/outra org
+    repo = PgSampleRepository(ctx.session)
+    fields = data.model_dump(exclude_unset=True)
+    updated = await repo.update_morphology(sample_id, fields)
+    return updated.to_dict()
+
+
+async def create_sample_test(
+    ctx: Ctx, sample_id: UUID, data: SampleTestCreate
+) -> dict[str, Any]:
+    await get_sample(ctx, sample_id)
+    repo = PgSampleRepository(ctx.session)
+    test = SampleTest(
+        id=new_id(),
+        organization_id=ctx.org_id,
+        sample_id=sample_id,
+        test_name=data.test_name,
+        result=data.result,
+        method=data.method,
+        tested_at=data.tested_at,
+        notes=data.notes,
+        created_by=ctx.user_id,
+    )
+    saved = await repo.create_test(test)
+    return saved.to_dict()
+
+
+async def list_sample_tests(ctx: Ctx, sample_id: UUID) -> list[dict[str, Any]]:
+    await get_sample(ctx, sample_id)
+    repo = PgSampleRepository(ctx.session)
+    return [t.to_dict() for t in await repo.list_tests(sample_id)]
+
+
+async def create_sample_gene(
+    ctx: Ctx, sample_id: UUID, data: SampleGeneCreate
+) -> dict[str, Any]:
+    await get_sample(ctx, sample_id)
+    repo = PgSampleRepository(ctx.session)
+    gene = SampleGene(
+        id=new_id(),
+        organization_id=ctx.org_id,
+        sample_id=sample_id,
+        gene=data.gene,
+        purpose=data.purpose,
+        result=data.result,
+        ncbi_accession=data.ncbi_accession,
+        method=data.method,
+        tested_at=data.tested_at,
+        notes=data.notes,
+        created_by=ctx.user_id,
+    )
+    saved = await repo.create_gene(gene)
+    return saved.to_dict()
+
+
+async def list_sample_genes(ctx: Ctx, sample_id: UUID) -> list[dict[str, Any]]:
+    await get_sample(ctx, sample_id)
+    repo = PgSampleRepository(ctx.session)
+    return [g.to_dict() for g in await repo.list_genes(sample_id)]
 
 
 # ── Custódia ────────────────────────────────────────────────────────────

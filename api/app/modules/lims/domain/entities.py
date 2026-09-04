@@ -10,7 +10,7 @@ pelo módulo `identity`. `Project.customer_user_id` referencia esse membro
 diretamente; ver ADR de fusão em docs/decisions/.
 """
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 from uuid import UUID
 
@@ -152,6 +152,16 @@ class Sample:
     recorded_at: datetime | None = None
     notes: str | None = None
     created_at: datetime | None = None
+    # Dados biológicos — só fazem sentido pra isolados (organism_type setado),
+    # mas ficam na própria Sample: ela é o agregado, ver módulo docstring.
+    organism_type: str | None = None
+    colonia_forma: str | None = None
+    colonia_elevacao: str | None = None
+    colonia_margem: str | None = None
+    colonia_cor: str | None = None
+    colonia_textura: str | None = None
+    colonia_tamanho_mm: float | None = None
+    colonia_opacidade: str | None = None
 
     def assert_can_transition_to(self, target_status: str) -> None:
         """Delega à máquina de estados de `custody.py`. Lança
@@ -175,4 +185,85 @@ class Sample:
             "recorded_at": self.recorded_at,
             "notes": self.notes,
             "created_at": self.created_at,
+            "organism_type": self.organism_type,
+            "colonia_forma": self.colonia_forma,
+            "colonia_elevacao": self.colonia_elevacao,
+            "colonia_margem": self.colonia_margem,
+            "colonia_cor": self.colonia_cor,
+            "colonia_textura": self.colonia_textura,
+            "colonia_tamanho_mm": self.colonia_tamanho_mm,
+            "colonia_opacidade": self.colonia_opacidade,
+        }
+
+
+@dataclass
+class SampleTest:
+    """Um teste bioquímico/enzimático de bancada. Catálogo aberto de
+    propósito (`test_name` livre) — mutável, sem trigger de imutabilidade:
+    não é elo de custódia legal nem resultado ISO 17025 formal (isso já
+    existe em `lab_results`/`result_versions`, módulo `laboratory`)."""
+
+    id: UUID
+    organization_id: UUID
+    sample_id: UUID
+    test_name: str
+    result: str | None = None
+    method: str | None = None
+    tested_at: date | None = None
+    notes: str | None = None
+    created_by: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "organization_id": self.organization_id,
+            "sample_id": self.sample_id,
+            "test_name": self.test_name,
+            "result": self.result,
+            "method": self.method,
+            "tested_at": self.tested_at,
+            "notes": self.notes,
+            "created_by": self.created_by,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
+@dataclass
+class SampleGene:
+    """Um gene sequenciado (16S p/ identificação, genes de resistência ou
+    produção de enzima). Metadado + resultado, de propósito — sem sequência
+    bruta/FASTA."""
+
+    id: UUID
+    organization_id: UUID
+    sample_id: UUID
+    gene: str
+    purpose: str
+    result: str | None = None
+    ncbi_accession: str | None = None
+    method: str | None = None
+    tested_at: date | None = None
+    notes: str | None = None
+    created_by: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "organization_id": self.organization_id,
+            "sample_id": self.sample_id,
+            "gene": self.gene,
+            "purpose": self.purpose,
+            "result": self.result,
+            "ncbi_accession": self.ncbi_accession,
+            "method": self.method,
+            "tested_at": self.tested_at,
+            "notes": self.notes,
+            "created_by": self.created_by,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
         }
