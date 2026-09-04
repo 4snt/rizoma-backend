@@ -32,6 +32,12 @@ app = FastAPI(
     version="2.0.0",
     description="Plataforma de biotecnologia ambiental — MVP (Fase 0 + Fatia 1).",
     lifespan=lifespan,
+    # Em produção o proxy só encaminha /api/* pro backend — o resto cai no
+    # frontend. Os caminhos default (/openapi.json, /docs, /redoc) ficam fora
+    # dessa faixa e dão 404 atrás do proxy, então movem pra debaixo de /api.
+    openapi_url="/api/openapi.json",
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
 )
 
 app.add_middleware(
