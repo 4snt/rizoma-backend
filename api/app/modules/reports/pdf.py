@@ -107,7 +107,6 @@ def build_report_pdf(content: dict, code: str, version: int, verify_url: str) ->
     customer = content.get("customer") or {}
     samples = content.get("samples") or []
     results = content.get("results") or []
-    bio = content.get("bioinformatics") or []
     signer = content.get("signed_by_name") or content.get("tech_responsible") or "—"
     signed_at = content.get("signed_at") or "—"
     content_sha = content.get("content_sha256") or "—"
@@ -149,7 +148,6 @@ def build_report_pdf(content: dict, code: str, version: int, verify_url: str) ->
             [
                 ("Código", project.get("code")),
                 ("Nome", project.get("name")),
-                ("Marcador", project.get("marker_type")),
                 ("Descrição", project.get("description")),
             ]
         )
@@ -219,16 +217,6 @@ def build_report_pdf(content: dict, code: str, version: int, verify_url: str) ->
         )
     else:
         story.append(Paragraph("Nenhum resultado aprovado para este projeto.", _BODY))
-
-    # ── Bioinformática ──────────────────────────────────────────────────
-    if bio:
-        story.append(Paragraph("Análises de bioinformática", _H2))
-        data = [["Tipo de análise", "Resumo"]]
-        for b in bio:
-            data.append([_txt(b.get("analysis_type")), Paragraph(_txt(b.get("summary")), _BODY)])
-        t = Table(data, colWidths=[45 * mm, 120 * mm], repeatRows=1)
-        t.setStyle(_TABLE_STYLE)
-        story.append(t)
 
     # ── Rodapé: assinatura + QR + hash ──────────────────────────────────
     story.append(Spacer(1, 8 * mm))

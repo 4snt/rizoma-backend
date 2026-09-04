@@ -86,24 +86,6 @@ services:
     # rizoma_app / rizoma_system, sem os quais o runtime nem conecta.
     command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
-  # Fora do 'up' padrão: a imagem Bioconductor leva ~20 min para buildar.
-  # Suba com:  docker compose --profile worker up -d
-  r-worker:
-    build: ./r-worker
-    profiles: ["worker"]
-    env_file: .env
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      S3_ENDPOINT: http://minio:9000
-    volumes:
-      - ./r-worker:/worker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-
 volumes:
   pg_data:
   minio_data:

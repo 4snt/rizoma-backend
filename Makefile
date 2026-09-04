@@ -5,19 +5,16 @@ COMPOSE ?= docker compose
 DC_API  := $(COMPOSE) exec api
 
 .DEFAULT_GOAL := help
-.PHONY: help up up-worker down logs migrate migration test psql reset seed
+.PHONY: help up down logs migrate migration test psql reset seed
 
 help: ## Lista os alvos disponíveis
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
-up: ## Sobe postgres + minio + api (sem o R Worker)
+up: ## Sobe postgres + minio + api
 	$(COMPOSE) up -d
 
-up-worker: ## Sobe tudo, inclusive o R Worker (build de ~20 min na primeira vez)
-	$(COMPOSE) --profile worker up -d
-
 down: ## Derruba os containers (preserva os volumes)
-	$(COMPOSE) --profile worker down
+	$(COMPOSE) down
 
 logs: ## Segue os logs da API
 	$(COMPOSE) logs -f api
@@ -36,7 +33,7 @@ psql: ## Abre um psql como dono do schema
 	$(COMPOSE) exec postgres psql -U $${POSTGRES_USER:-api_user} -d $${POSTGRES_DB:-rizoma}
 
 reset: ## APAGA os volumes, sobe do zero e migra (destrói os dados locais)
-	$(COMPOSE) --profile worker down -v
+	$(COMPOSE) down -v
 	$(COMPOSE) up -d
 	@echo "aguardando o banco e a API subirem..."
 	@sleep 8

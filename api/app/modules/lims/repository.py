@@ -6,7 +6,6 @@ Recebe a `AsyncSession` já aberta pelo `Ctx` (não abre conexão própria como 
 aplicado nessa sessão pelo `shared/context.py`, então o repository herda o
 isolamento de graça, sem precisar repetir `WHERE organization_id = ...`.
 """
-import json
 from typing import Any
 from uuid import UUID
 
@@ -49,10 +48,7 @@ def _project_from_row(row: dict[str, Any]) -> Project:
         name=row["name"],
         description=row["description"],
         customer_user_id=row["customer_user_id"],
-        marker_type=row["marker_type"],
         status=row["status"],
-        dada2_params=row["dada2_params"] or {},
-        analyses=row["analyses"] or [],
         created_by=row["created_by"],
         created_at=row["created_at"],
     )
@@ -122,9 +118,8 @@ class PgProjectRepository:
                     """
                     INSERT INTO projects
                         (id, organization_id, customer_user_id, code, name, description,
-                         marker_type, dada2_params, analyses, created_by)
-                    VALUES (:id, :org, :customer, :code, :name, :description,
-                            :marker, CAST(:dada2 AS jsonb), CAST(:analyses AS jsonb), :user)
+                         created_by)
+                    VALUES (:id, :org, :customer, :code, :name, :description, :user)
                     RETURNING *
                     """
                 ),
@@ -135,9 +130,6 @@ class PgProjectRepository:
                     "code": project.code,
                     "name": project.name,
                     "description": project.description,
-                    "marker": project.marker_type,
-                    "dada2": json.dumps(project.dada2_params),
-                    "analyses": json.dumps(project.analyses),
                     "user": str(project.created_by) if project.created_by else None,
                 },
             )

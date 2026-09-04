@@ -5,7 +5,6 @@ teste roda sem Postgres — é um smoke test de que as rotas protegidas não abr
 sem autenticação. O v2 responde 401 (não autenticado); 403 fica reservado para
 autenticado-porém-sem-permissão.
 """
-from uuid import uuid4
 
 # HTTPBearer sem credencial → 401. Alguns setups devolvem 403; aceitamos ambos
 # para o teste checar o que importa: a rota NÃO abre sem token.
@@ -19,14 +18,6 @@ async def test_list_projects_requires_auth(client):
 
 async def test_create_project_requires_auth(client):
     resp = await client.post("/api/v2/lims/projects", json={"code": "X", "name": "X"})
-    assert resp.status_code in UNAUTH
-
-
-async def test_enqueue_job_requires_auth(client):
-    resp = await client.post(
-        "/api/v2/jobs/enqueue",
-        json={"project_id": str(uuid4()), "job_type": "deseq2"},
-    )
     assert resp.status_code in UNAUTH
 
 

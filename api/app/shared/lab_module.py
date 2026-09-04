@@ -38,9 +38,6 @@ class LabModuleMetadata:
     # isso é o CHECK constraint do banco; um módulo novo precisaria dessa
     # lista pra registrar os próprios valores sem tocar no schema genérico.
     sample_matrices: tuple[str, ...]
-    # job_type que o módulo sabe processar (chave do switch em r-worker/worker.R
-    # e do payload de POST /api/v2/jobs/enqueue).
-    analysis_job_types: tuple[str, ...]
 
 
 class SampleMetadataValidator(Protocol):

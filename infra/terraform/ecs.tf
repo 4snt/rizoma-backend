@@ -8,7 +8,7 @@ resource "aws_ecs_cluster" "main" {
 }
 
 resource "aws_cloudwatch_log_group" "svc" {
-  for_each          = toset(["api", "rworker", "frontend"])
+  for_each          = toset(["api", "frontend"])
   name              = "/ecs/${local.name}/${each.key}"
   retention_in_days = var.log_retention_days
 }
@@ -22,7 +22,7 @@ locals {
   public_base = "${local.scheme}://${local.app_host}"
   ws_base     = "${local.ws_scheme}://${local.app_host}"
 
-  # Env comum a api e worker: conexão com o RDS e com o S3. Endpoints S3 vazios
+  # Env comum aos serviços: conexão com o RDS e com o S3. Endpoints S3 vazios
   # => boto3/aws.s3 usam o endpoint regional nativo e a IAM role da task.
   db_env = [
     { name = "POSTGRES_HOST", value = aws_db_instance.main.address },
@@ -75,7 +75,6 @@ resource "aws_ecs_task_definition" "api" {
       ])
       secrets = concat(local.db_secrets, [
         { name = "JWT_SECRET", valueFrom = aws_ssm_parameter.secret["jwt_secret"].arn },
-        { name = "WORKER_TOKEN", valueFrom = aws_ssm_parameter.secret["worker_token"].arn },
       ])
       logConfiguration = {
         logDriver = "awslogs"
@@ -111,53 +110,6 @@ resource "aws_ecs_service" "api" {
   depends_on = [aws_lb_listener.http]
 }
 
-# ────────────────────────────── R Worker ────────────────────────────
-resource "aws_ecs_task_definition" "rworker" {
-  family                   = "${local.name}-rworker"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = var.worker_cpu
-  memory                   = var.worker_memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "rworker"
-      image     = "${aws_ecr_repository.repo["rworker"].repository_url}:${var.image_tag}"
-      essential = true
-      # O worker conecta como dono do schema (POSTGRES_USER) para LISTEN/NOTIFY.
-      environment = concat(local.db_env, local.s3_env, [
-        { name = "API_URL", value = local.public_base },
-      ])
-      secrets = concat(local.db_secrets, [
-        { name = "WORKER_TOKEN", valueFrom = aws_ssm_parameter.secret["worker_token"].arn },
-      ])
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.svc["rworker"].name
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "rworker"
-        }
-      }
-    }
-  ])
-}
-
-resource "aws_ecs_service" "rworker" {
-  name            = "rworker"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.rworker.arn
-  desired_count   = var.worker_desired_count
-  launch_type     = "FARGATE"
-
-  network_configuration {
-    subnets          = aws_subnet.public[*].id
-    security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = true
-  }
-}
 
 # ─────────────────────────────── Frontend ───────────────────────────
 resource "aws_ecs_task_definition" "frontend" {

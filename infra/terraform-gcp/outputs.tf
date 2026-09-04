@@ -30,12 +30,6 @@ output "db_api_user_password" {
   sensitive   = true
 }
 
-output "db_r_worker_password" {
-  description = "Senha do usuário r_worker no PostgreSQL"
-  value       = random_password.db_r_worker.result
-  sensitive   = true
-}
-
 output "db_readonly_password" {
   description = "Senha do usuário readonly no PostgreSQL"
   value       = random_password.db_readonly.result
@@ -71,8 +65,6 @@ output "create_k8s_secret_command" {
       --from-literal=POSTGRES_DB=${var.db_name} \
       --from-literal=POSTGRES_USER=api_user \
       --from-literal=POSTGRES_PASSWORD=$(terraform output -raw db_api_user_password) \
-      --from-literal=POSTGRES_USER_RWORKER=r_worker \
-      --from-literal=POSTGRES_PASSWORD_RWORKER=$(terraform output -raw db_r_worker_password) \
       --from-literal=ES_HOST=http://elasticsearch:9200 \
       --from-literal=GOOGLE_CLIENT_ID=PREENCHA \
       --from-literal=JWT_SECRET=PREENCHA \

@@ -22,9 +22,6 @@ class Settings(BaseSettings):
     system_db_user: str = "rizoma_system"
     system_db_password: str = "rizoma_system_pw"
 
-    # Token compartilhado que o R Worker apresenta nos endpoints /worker/*.
-    worker_token: str = "dev-worker-token"
-
     # Object storage — ADR-001: substitui PostgreSQL Large Objects.
     # s3_public_endpoint é o host que o browser enxerga; dentro da rede de
     # containers o endpoint interno é outro, e a URL assinada precisa do público.
@@ -59,10 +56,6 @@ class Settings(BaseSettings):
     resend_from_email: str = "Rizoma <convites@localhost>"
     # URL pública do frontend, usada no link "Entrar" do e-mail de convite.
     app_public_url: str = "http://localhost:3000"
-
-    # Reaper: job cujo worker não bate heartbeat há N segundos volta para a fila.
-    job_heartbeat_timeout_seconds: int = 300
-    job_max_attempts: int = 3
 
     @property
     def postgres_dsn(self) -> str:

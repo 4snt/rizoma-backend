@@ -85,9 +85,9 @@ async def main() -> None:
         await c.execute(
             text(
                 "INSERT INTO projects (id, organization_id, customer_id, code, name, "
-                "description, marker_type, status, created_by) VALUES "
+                "description, status, created_by) VALUES "
                 "(:i,:o,:c,'INOVAHERB','INOVAHERB — micobioma de solo',"
-                "'Efeito de herbicidas sobre a comunidade fúngica do solo.','ITS','in_progress',:u)"
+                "'Efeito de herbicidas sobre a comunidade fúngica do solo.','in_progress',:u)"
             ),
             {"i": str(proj), "o": str(org_a), "c": str(cust), "u": str(user_ana)},
         )

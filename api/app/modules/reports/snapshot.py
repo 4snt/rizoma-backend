@@ -18,27 +18,13 @@ from app.modules.reports.domain.entities import jsonable
 from app.shared.context import Ctx
 
 
-def _summarize(data: Any) -> str:
-    if not isinstance(data, dict) or not data:
-        return "Sem resumo estruturado."
-    parts = []
-    for k, v in list(data.items())[:6]:
-        if isinstance(v, (list, tuple)):
-            parts.append(f"{k}: {len(v)} registro(s)")
-        elif isinstance(v, dict):
-            parts.append(f"{k}: {len(v)} campo(s)")
-        else:
-            parts.append(f"{k}: {v}")
-    return "; ".join(parts)
-
-
 async def build_snapshot(ctx: Ctx, project_id: UUID, title: str) -> dict[str, Any]:
     s = ctx.session
 
     project = (
         await s.execute(
             text(
-                "SELECT p.id, p.code, p.name, p.description, p.marker_type, p.status, "
+                "SELECT p.id, p.code, p.name, p.description, p.status, "
                 "       p.customer_user_id, o.name AS org_name, o.cnpj AS org_cnpj "
                 "FROM projects p JOIN organizations o ON o.id = p.organization_id "
                 "WHERE p.id = :p"
@@ -95,23 +81,6 @@ async def build_snapshot(ctx: Ctx, project_id: UUID, title: str) -> dict[str, An
         )
     ).fetchall()
 
-    # Bioinformática: SELECT direto (o módulo jobs é de outra fatia — acoplar os
-    # dois por import criaria dependência circular).
-    bio = (
-        await s.execute(
-            text(
-                """
-                SELECT ar.analysis_type, ar.result_data, ar.created_at, j.job_type
-                FROM analysis_results ar
-                JOIN pipeline_jobs j ON j.id = ar.job_id
-                WHERE j.project_id = :p AND j.status = 'completed'
-                ORDER BY ar.created_at
-                """
-            ),
-            {"p": str(project_id)},
-        )
-    ).fetchall()
-
     content = {
         "title": title,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -120,7 +89,6 @@ async def build_snapshot(ctx: Ctx, project_id: UUID, title: str) -> dict[str, An
             "code": project.code,
             "name": project.name,
             "description": project.description,
-            "marker_type": project.marker_type,
             "status": project.status,
         },
         "customer": (
@@ -162,15 +130,6 @@ async def build_snapshot(ctx: Ctx, project_id: UUID, title: str) -> dict[str, An
                 "version": r.version,
             }
             for r in results
-        ],
-        "bioinformatics": [
-            {
-                "analysis_type": r.analysis_type,
-                "job_type": r.job_type,
-                "summary": _summarize(r.result_data),
-                "created_at": r.created_at,
-            }
-            for r in bio
         ],
     }
     return jsonable(content)

@@ -70,7 +70,7 @@ async def org_admin(db):
 async def _make_project(client, headers) -> str:
     r = await client.post(
         f"{PREFIX}/projects",
-        json={"code": f"P-{new_id().hex[:6]}", "name": "Pós-Fogo", "marker_type": "16S"},
+        json={"code": f"P-{new_id().hex[:6]}", "name": "Pós-Fogo"},
         headers=headers,
     )
     assert r.status_code == 201, r.text
@@ -102,7 +102,6 @@ async def test_customer_project_sample_e_listagem(client, org_admin, db):
             "code": "INOVAHERB",
             "name": "INOVAHERB ITS",
             "customer_user_id": str(pesquisador_id),
-            "marker_type": "ITS",
         },
         headers=h,
     )
