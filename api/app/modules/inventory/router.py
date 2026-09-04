@@ -11,6 +11,8 @@ from app.modules.inventory.schemas import (
     EquipmentCalibrationOut,
     EquipmentCreate,
     EquipmentOut,
+    EquipmentReservationCreate,
+    EquipmentReservationOut,
     EquipmentStatusUpdate,
     ExpiringLotAlert,
     InventoryAlertsOut,
@@ -102,6 +104,32 @@ async def record_calibration(
 @router.get("/equipment/{equipment_id}/calibrations", response_model=list[EquipmentCalibrationOut])
 async def list_calibrations(equipment_id: UUID, ctx: CtxDep) -> list[EquipmentCalibrationOut]:
     return [EquipmentCalibrationOut(**vars(c)) for c in await service.list_calibrations(ctx, equipment_id)]
+
+
+@router.post(
+    "/equipment/{equipment_id}/reservations",
+    response_model=EquipmentReservationOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_reservation(
+    equipment_id: UUID, data: EquipmentReservationCreate, ctx: CtxDep
+) -> EquipmentReservationOut:
+    return EquipmentReservationOut(**vars(await service.create_reservation(ctx, equipment_id, data)))
+
+
+@router.get("/equipment/{equipment_id}/reservations", response_model=list[EquipmentReservationOut])
+async def list_reservations(equipment_id: UUID, ctx: CtxDep) -> list[EquipmentReservationOut]:
+    return [EquipmentReservationOut(**vars(r)) for r in await service.list_reservations(ctx, equipment_id)]
+
+
+@router.post(
+    "/equipment/{equipment_id}/reservations/{reservation_id}/cancel",
+    response_model=EquipmentReservationOut,
+)
+async def cancel_reservation(
+    equipment_id: UUID, reservation_id: UUID, ctx: CtxDep
+) -> EquipmentReservationOut:
+    return EquipmentReservationOut(**vars(await service.cancel_reservation(ctx, equipment_id, reservation_id)))
 
 
 # ── Alertas ──────────────────────────────────────────────────────────────

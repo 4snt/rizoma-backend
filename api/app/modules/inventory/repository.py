@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.inventory.domain.entities import (
     Equipment,
     EquipmentCalibration,
+    EquipmentReservation,
     Reagent,
     ReagentConsumption,
     ReagentLot,
@@ -33,6 +34,10 @@ _EQUIPMENT_COLS = (
 _CALIBRATION_COLS = (
     "id, organization_id, equipment_id, calibrated_at, next_calibration_due, "
     "certificate_number, performed_by, notes, created_by, created_at"
+)
+_RESERVATION_COLS = (
+    "id, organization_id, equipment_id, project_id, starts_at, ends_at, "
+    "status, notes, reserved_by, created_at"
 )
 
 
@@ -251,3 +256,68 @@ class PgEquipmentRepository:
             and r["days_remaining"] <= within_days
         ]
         return due
+
+    async def create_reservation(self, r: EquipmentReservation) -> EquipmentReservation:
+        row = (
+            await self._s.execute(
+                text(
+                    f"INSERT INTO equipment_reservations ({_RESERVATION_COLS}) "
+                    "VALUES (:id, :org, :equipment_id, :project_id, :starts_at, :ends_at, "
+                    ":status, :notes, :reserved_by, :created_at) "
+                    f"RETURNING {_RESERVATION_COLS}"
+                ),
+                {
+                    "id": str(r.id), "org": str(r.organization_id), "equipment_id": str(r.equipment_id),
+                    "project_id": str(r.project_id) if r.project_id else None,
+                    "starts_at": r.starts_at, "ends_at": r.ends_at, "status": r.status,
+                    "notes": r.notes, "reserved_by": str(r.reserved_by) if r.reserved_by else None,
+                    "created_at": r.created_at,
+                },
+            )
+        ).mappings().one()
+        return EquipmentReservation(**dict(row))
+
+    async def list_reservations(self, equipment_id: UUID) -> list[EquipmentReservation]:
+        rows = (
+            await self._s.execute(
+                text(
+                    f"SELECT {_RESERVATION_COLS} FROM equipment_reservations "
+                    "WHERE equipment_id = :e ORDER BY starts_at"
+                ),
+                {"e": str(equipment_id)},
+            )
+        ).mappings().all()
+        return [EquipmentReservation(**dict(r)) for r in rows]
+
+    async def has_overlapping_reservation(
+        self, equipment_id: UUID, starts_at: Any, ends_at: Any
+    ) -> bool:
+        row = (
+            await self._s.execute(
+                text(
+                    "SELECT 1 FROM equipment_reservations "
+                    "WHERE equipment_id = :e AND status = 'confirmed' "
+                    "  AND starts_at < :new_ends_at AND ends_at > :new_starts_at "
+                    "LIMIT 1"
+                ),
+                {"e": str(equipment_id), "new_starts_at": starts_at, "new_ends_at": ends_at},
+            )
+        ).first()
+        return row is not None
+
+    async def cancel_reservation(
+        self, equipment_id: UUID, reservation_id: UUID
+    ) -> EquipmentReservation | None:
+        """`AND equipment_id = :eq` de propósito: o id da reserva sozinho não
+        prova que ela pertence ao equipamento da URL."""
+        row = (
+            await self._s.execute(
+                text(
+                    "UPDATE equipment_reservations SET status = 'cancelled' "
+                    "WHERE id = :id AND equipment_id = :eq AND status = 'confirmed' "
+                    f"RETURNING {_RESERVATION_COLS}"
+                ),
+                {"id": str(reservation_id), "eq": str(equipment_id)},
+            )
+        ).mappings().first()
+        return EquipmentReservation(**dict(row)) if row else None

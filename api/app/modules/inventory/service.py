@@ -16,6 +16,7 @@ from sqlalchemy.exc import IntegrityError
 from app.modules.inventory.domain.entities import (
     Equipment,
     EquipmentCalibration,
+    EquipmentReservation,
     Reagent,
     ReagentConsumption,
     ReagentLot,
@@ -24,6 +25,7 @@ from app.modules.inventory.repository import PgEquipmentRepository, PgReagentRep
 from app.modules.inventory.schemas import (
     EquipmentCalibrationCreate,
     EquipmentCreate,
+    EquipmentReservationCreate,
     ReagentConsumptionCreate,
     ReagentCreate,
     ReagentLotCreate,
@@ -178,6 +180,47 @@ async def record_calibration(
 async def list_calibrations(ctx: Ctx, equipment_id: UUID) -> list[EquipmentCalibration]:
     ctx.require("equipment:read")
     return await PgEquipmentRepository(ctx.session).list_calibrations(equipment_id)
+
+
+async def create_reservation(
+    ctx: Ctx, equipment_id: UUID, data: EquipmentReservationCreate
+) -> EquipmentReservation:
+    ctx.require("equipment:write")
+    if data.ends_at <= data.starts_at:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "ends_at precisa ser depois de starts_at."
+        )
+    repo = PgEquipmentRepository(ctx.session)
+    if await repo.get(equipment_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Equipamento não encontrado.")
+    if await repo.has_overlapping_reservation(equipment_id, data.starts_at, data.ends_at):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Equipamento já reservado nesse período."
+        )
+    return await repo.create_reservation(
+        EquipmentReservation(
+            id=new_id(), organization_id=ctx.org_id, equipment_id=equipment_id,
+            project_id=data.project_id, starts_at=data.starts_at, ends_at=data.ends_at,
+            status="confirmed", notes=data.notes, reserved_by=ctx.user_id, created_at=_now(),
+        )
+    )
+
+
+async def list_reservations(ctx: Ctx, equipment_id: UUID) -> list[EquipmentReservation]:
+    ctx.require("equipment:read")
+    return await PgEquipmentRepository(ctx.session).list_reservations(equipment_id)
+
+
+async def cancel_reservation(
+    ctx: Ctx, equipment_id: UUID, reservation_id: UUID
+) -> EquipmentReservation:
+    ctx.require("equipment:write")
+    reservation = await PgEquipmentRepository(ctx.session).cancel_reservation(
+        equipment_id, reservation_id
+    )
+    if reservation is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Reserva não encontrada ou já cancelada.")
+    return reservation
 
 
 # ── Alertas ──────────────────────────────────────────────────────────────

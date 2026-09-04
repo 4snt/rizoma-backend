@@ -80,3 +80,17 @@ class EquipmentCalibration:
     notes: str | None
     created_by: UUID | None
     created_at: datetime
+
+
+@dataclass(frozen=True)
+class EquipmentReservation:
+    id: UUID
+    organization_id: UUID
+    equipment_id: UUID
+    project_id: UUID | None
+    starts_at: datetime
+    ends_at: datetime
+    status: str  # 'confirmed' | 'cancelled'
+    notes: str | None
+    reserved_by: UUID | None
+    created_at: datetime

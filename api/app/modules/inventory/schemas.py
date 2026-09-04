@@ -126,6 +126,26 @@ class EquipmentCalibrationOut(BaseModel):
     created_at: datetime
 
 
+class EquipmentReservationCreate(BaseModel):
+    starts_at: datetime
+    ends_at: datetime
+    project_id: UUID | None = None
+    notes: str | None = None
+
+
+class EquipmentReservationOut(BaseModel):
+    id: UUID
+    organization_id: UUID
+    equipment_id: UUID
+    project_id: UUID | None
+    starts_at: datetime
+    ends_at: datetime
+    status: str
+    notes: str | None
+    reserved_by: UUID | None
+    created_at: datetime
+
+
 # ── Alertas ──────────────────────────────────────────────────────────────
 class ExpiringLotAlert(BaseModel):
     reagent_lot_id: UUID
