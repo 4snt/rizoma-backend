@@ -9,13 +9,14 @@ Se a camada 1 tiver um bug, a 2 ainda segura. Só a 1 não basta.
 from dataclasses import dataclass
 from uuid import UUID
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import decode_token
+from app.shared.commit_middleware import SESSION_STATE_KEY
 from app.shared.db import get_sessionmaker
 from app.shared.tenancy import bind_tenant, bind_user
 
@@ -85,6 +86,7 @@ async def get_session() -> AsyncSession:
 
 
 async def get_ctx(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(_bearer),
     x_organization: str | None = Header(default=None, alias="X-Organization"),
     session: AsyncSession = Depends(get_session),
@@ -92,8 +94,14 @@ async def get_ctx(
     """Valida o JWT, resolve a organização e AMARRA a sessão a ela.
 
     A transação fica aberta com o GUC de tenant já setado — todo SELECT/INSERT
-    do handler já nasce isolado. O commit acontece no fim do handler.
+    do handler já nasce isolado.
+
+    Commit: quem commita é `CommitBeforeResponseMiddleware` (antes de a
+    resposta sair — ver docstring lá). O commit no teardown abaixo é só
+    fallback para apps sem o middleware (testes) e é no-op quando o
+    middleware já commitou.
     """
+    setattr(request.state, SESSION_STATE_KEY, session)
     try:
         payload = decode_token(credentials.credentials)
     except JWTError:
@@ -145,7 +153,8 @@ async def get_ctx(
 
     try:
         yield Ctx(user_id=user_id, org_id=org_id, role=role, session=session)
-        await session.commit()
+        if session.in_transaction():
+            await session.commit()
     except Exception:
         await session.rollback()
         raise

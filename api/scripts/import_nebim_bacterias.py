@@ -75,9 +75,22 @@ def main() -> None:
                 sample_id = r.json()["id"]
                 created_samples += 1
 
+                # Idempotência dos testes: a Idempotency-Key só cobre a amostra.
+                # UNIQUE(sample_id, test_name, tested_at) não segura reimport
+                # porque tested_at é NULL aqui (NULL != NULL) — então pula o
+                # que já existe por nome.
+                existing = client.get(f"/api/v2/lims/samples/{sample_id}/tests")
+                if existing.status_code != 200:
+                    warnings.append(
+                        f"{code}: falha ao listar testes existentes "
+                        f"({existing.status_code} {existing.text}); testes pulados"
+                    )
+                    continue
+                already = {t["test_name"] for t in existing.json()}
+
                 for column in ENZIME_COLUMNS:
                     value = (row.get(column) or "").strip()
-                    if not value:
+                    if not value or column in already:
                         continue
                     tr = client.post(
                         f"/api/v2/lims/samples/{sample_id}/tests",
