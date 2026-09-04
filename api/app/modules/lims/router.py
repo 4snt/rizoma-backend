@@ -12,10 +12,19 @@ from app.modules.lims.schemas import (
     ProjectCreate,
     ProjectOut,
     ProjectStatusUpdate,
+    SampleAliquotCreate,
+    SampleAliquotOut,
+    SampleAliquotUpdate,
     SampleCreate,
+    SampleGeneCreate,
+    SampleGeneOut,
+    SampleGeneUpdate,
     SampleListItemOut,
     SampleOut,
+    SampleTestCreate,
+    SampleTestOut,
     SampleTransition,
+    SampleUpdate,
 )
 from app.shared.context import Ctx, get_ctx
 
@@ -111,6 +120,14 @@ async def get_sample(sample_id: UUID, ctx: CtxDep) -> SampleOut:
     return SampleOut(**await service.get_sample(ctx, sample_id))
 
 
+@router.patch("/samples/{sample_id}", response_model=SampleOut)
+async def update_sample(sample_id: UUID, data: SampleUpdate, ctx: CtxDep) -> SampleOut:
+    """Edição descritiva (morfologia, registro do isolado, notas, posição).
+    Status não passa por aqui — é `POST .../transition`, que gera evento."""
+    ctx.require("sample:write")
+    return SampleOut(**await service.update_sample(ctx, sample_id, data))
+
+
 @router.post("/samples/{sample_id}/transition", response_model=SampleOut)
 async def transition_sample(
     sample_id: UUID, data: SampleTransition, ctx: CtxDep
@@ -123,3 +140,93 @@ async def transition_sample(
 async def get_custody_chain(sample_id: UUID, ctx: CtxDep) -> CustodyChainOut:
     ctx.require("sample:read")
     return CustodyChainOut(**await service.get_custody_chain(ctx, sample_id))
+
+
+# ── Dados biológicos ────────────────────────────────────────────────────
+@router.post(
+    "/samples/{sample_id}/tests", response_model=SampleTestOut, status_code=status.HTTP_201_CREATED
+)
+async def create_sample_test(
+    sample_id: UUID, data: SampleTestCreate, ctx: CtxDep
+) -> SampleTestOut:
+    ctx.require("sample:write")
+    return SampleTestOut(**await service.create_sample_test(ctx, sample_id, data))
+
+
+@router.get("/samples/{sample_id}/tests", response_model=list[SampleTestOut])
+async def list_sample_tests(sample_id: UUID, ctx: CtxDep) -> list[SampleTestOut]:
+    ctx.require("sample:read")
+    return [SampleTestOut(**t) for t in await service.list_sample_tests(ctx, sample_id)]
+
+
+@router.post(
+    "/samples/{sample_id}/genes", response_model=SampleGeneOut, status_code=status.HTTP_201_CREATED
+)
+async def create_sample_gene(
+    sample_id: UUID, data: SampleGeneCreate, ctx: CtxDep
+) -> SampleGeneOut:
+    ctx.require("sample:write")
+    return SampleGeneOut(**await service.create_sample_gene(ctx, sample_id, data))
+
+
+@router.get("/samples/{sample_id}/genes", response_model=list[SampleGeneOut])
+async def list_sample_genes(sample_id: UUID, ctx: CtxDep) -> list[SampleGeneOut]:
+    ctx.require("sample:read")
+    return [SampleGeneOut(**g) for g in await service.list_sample_genes(ctx, sample_id)]
+
+
+@router.patch("/samples/{sample_id}/genes/{gene_id}", response_model=SampleGeneOut)
+async def update_sample_gene(
+    sample_id: UUID, gene_id: UUID, data: SampleGeneUpdate, ctx: CtxDep
+) -> SampleGeneOut:
+    ctx.require("sample:write")
+    return SampleGeneOut(**await service.update_sample_gene(ctx, sample_id, gene_id, data))
+
+
+@router.delete("/samples/{sample_id}/genes/{gene_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sample_gene(sample_id: UUID, gene_id: UUID, ctx: CtxDep) -> None:
+    ctx.require("sample:write")
+    await service.delete_sample_gene(ctx, sample_id, gene_id)
+
+
+@router.delete("/samples/{sample_id}/tests/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sample_test(sample_id: UUID, test_id: UUID, ctx: CtxDep) -> None:
+    ctx.require("sample:write")
+    await service.delete_sample_test(ctx, sample_id, test_id)
+
+
+# ── Alíquotas (estoque físico) ──────────────────────────────────────────
+@router.post(
+    "/samples/{sample_id}/aliquots",
+    response_model=SampleAliquotOut,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_sample_aliquot(
+    sample_id: UUID, data: SampleAliquotCreate, ctx: CtxDep
+) -> SampleAliquotOut:
+    ctx.require("sample:write")
+    return SampleAliquotOut(**await service.create_sample_aliquot(ctx, sample_id, data))
+
+
+@router.get("/samples/{sample_id}/aliquots", response_model=list[SampleAliquotOut])
+async def list_sample_aliquots(sample_id: UUID, ctx: CtxDep) -> list[SampleAliquotOut]:
+    ctx.require("sample:read")
+    return [SampleAliquotOut(**a) for a in await service.list_sample_aliquots(ctx, sample_id)]
+
+
+@router.patch("/samples/{sample_id}/aliquots/{aliquot_id}", response_model=SampleAliquotOut)
+async def update_sample_aliquot(
+    sample_id: UUID, aliquot_id: UUID, data: SampleAliquotUpdate, ctx: CtxDep
+) -> SampleAliquotOut:
+    ctx.require("sample:write")
+    return SampleAliquotOut(
+        **await service.update_sample_aliquot(ctx, sample_id, aliquot_id, data)
+    )
+
+
+@router.delete(
+    "/samples/{sample_id}/aliquots/{aliquot_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def delete_sample_aliquot(sample_id: UUID, aliquot_id: UUID, ctx: CtxDep) -> None:
+    ctx.require("sample:write")
+    await service.delete_sample_aliquot(ctx, sample_id, aliquot_id)

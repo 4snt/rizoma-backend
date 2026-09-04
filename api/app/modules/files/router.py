@@ -32,9 +32,10 @@ async def download(file_id: UUID, ctx: Ctx = Depends(get_ctx)) -> DownloadRespon
 async def list_files(
     project_id: UUID | None = Query(default=None),
     sample_id: UUID | None = Query(default=None),
+    sample_gene_id: UUID | None = Query(default=None),
     ctx: Ctx = Depends(get_ctx),
 ) -> list[FileOut]:
-    return await service.list_files(ctx, project_id, sample_id)
+    return await service.list_files(ctx, project_id, sample_id, sample_gene_id)
 
 
 @router.delete("/{file_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -12,6 +12,7 @@ from app.modules.inventory.router import router as inventory_router
 from app.modules.laboratory.router import router as lab_router
 from app.modules.lims.router import router as lims_router
 from app.modules.reports.router import router as reports_router
+from app.shared.commit_middleware import CommitBeforeResponseMiddleware
 from app.shared.db import dispose_engine
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# Commit da transação da requisição antes de a resposta sair — o teardown do
+# `yield` em get_ctx roda depois do envio no FastAPI >= 0.118, o que deixava
+# o cliente ver um 201 antes do commit (ver docstring do módulo).
+app.add_middleware(CommitBeforeResponseMiddleware)
 
 # Atenção: os routers não são uniformes. identity e lims expõem rotas relativas e
 # recebem o prefixo aqui; files, laboratory e reports já declaram o próprio
