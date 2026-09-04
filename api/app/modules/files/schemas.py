@@ -12,12 +12,18 @@ from pydantic import BaseModel, Field
 FileCategory = Literal[
     "fastq_r1", "fastq_r2", "phyloseq", "result",
     "report", "field_photo", "document", "other",
+    # Registro de isolados: sequência/cromatograma ligados a um gene, gel e
+    # foto de colônia ligados à amostra.
+    "fasta", "chromatogram", "gel_image", "colony_photo",
 ]
 
 
 class PresignRequest(BaseModel):
     project_id: UUID
     sample_id: UUID | None = None
+    # Vínculo opcional com um gene específico da amostra (FASTA/cromatograma
+    # do 16S, por exemplo). Exige `sample_id` e o gene precisa ser dela.
+    sample_gene_id: UUID | None = None
     category: FileCategory
     original_name: str = Field(min_length=1, max_length=512)
     mime_type: str | None = None
@@ -40,6 +46,7 @@ class FileOut(BaseModel):
     organization_id: UUID
     project_id: UUID | None
     sample_id: UUID | None
+    sample_gene_id: UUID | None = None
     category: str
     original_name: str
     storage_key: str

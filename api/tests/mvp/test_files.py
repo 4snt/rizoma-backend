@@ -161,3 +161,102 @@ async def test_confirm_sem_upload_marca_failed(app_client, scenario, db):
             )
         ).scalar_one()
     assert st == "failed"
+
+
+# ── Vínculo arquivo ↔ gene (FASTA/cromatograma do 16S) ────────────────────
+async def _seed_sample_with_gene(db, scenario, code: str) -> tuple[str, str]:
+    """Amostra + gene direto no banco (papel de sistema) — o cenário aqui é
+    o catálogo de arquivos, não o fluxo do LIMS."""
+    sample_id, gene_id = new_id(), new_id()
+    async with db() as s:
+        async with s.begin():
+            await s.execute(
+                text(
+                    "INSERT INTO samples (id, organization_id, project_id, code, matrix, status) "
+                    "VALUES (:i, :o, :p, :c, 'cultura_microbiana', 'planned')"
+                ),
+                {
+                    "i": str(sample_id),
+                    "o": str(scenario["org_id"]),
+                    "p": str(scenario["project_id"]),
+                    "c": code,
+                },
+            )
+            await s.execute(
+                text(
+                    "INSERT INTO sample_genes (id, organization_id, sample_id, gene, purpose) "
+                    "VALUES (:i, :o, :s, '16S', 'identificacao')"
+                ),
+                {"i": str(gene_id), "o": str(scenario["org_id"]), "s": str(sample_id)},
+            )
+    return str(sample_id), str(gene_id)
+
+
+async def test_presign_fasta_vinculado_a_gene(app_client, scenario, db):
+    sample_id, gene_id = await _seed_sample_with_gene(db, scenario, "BAC-01")
+    _, other_gene_id = await _seed_sample_with_gene(db, scenario, "BAC-02")
+
+    r = await app_client.post(
+        f"{BASE}/presign",
+        json={
+            "project_id": str(scenario["project_id"]),
+            "sample_id": sample_id,
+            "sample_gene_id": gene_id,
+            "category": "fasta",
+            "original_name": "BAC-01_16S.fasta",
+            "mime_type": "text/plain",
+        },
+        headers=scenario["headers"],
+    )
+    assert r.status_code == 201, r.text
+    file_id = r.json()["file_id"]
+
+    # Outro arquivo da mesma amostra, sem gene — não deve aparecer no filtro.
+    r = await app_client.post(
+        f"{BASE}/presign",
+        json={
+            "project_id": str(scenario["project_id"]),
+            "sample_id": sample_id,
+            "category": "colony_photo",
+            "original_name": "BAC-01_placa.jpg",
+        },
+        headers=scenario["headers"],
+    )
+    assert r.status_code == 201, r.text
+
+    r = await app_client.get(
+        f"{BASE}/", params={"sample_gene_id": gene_id}, headers=scenario["headers"]
+    )
+    assert r.status_code == 200
+    files = r.json()
+    assert [f["id"] for f in files] == [file_id]
+    assert files[0]["sample_gene_id"] == gene_id
+    assert files[0]["category"] == "fasta"
+
+    # Gene de OUTRA amostra: 404, não vincula.
+    r = await app_client.post(
+        f"{BASE}/presign",
+        json={
+            "project_id": str(scenario["project_id"]),
+            "sample_id": sample_id,
+            "sample_gene_id": other_gene_id,
+            "category": "chromatogram",
+            "original_name": "errado.ab1",
+        },
+        headers=scenario["headers"],
+    )
+    assert r.status_code == 404
+    assert "Gene" in r.json()["detail"]
+
+    # sample_gene_id sem sample_id: 422.
+    r = await app_client.post(
+        f"{BASE}/presign",
+        json={
+            "project_id": str(scenario["project_id"]),
+            "sample_gene_id": gene_id,
+            "category": "fasta",
+            "original_name": "sem_amostra.fasta",
+        },
+        headers=scenario["headers"],
+    )
+    assert r.status_code == 422

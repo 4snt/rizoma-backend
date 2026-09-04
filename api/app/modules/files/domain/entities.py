@@ -24,6 +24,7 @@ class FileRecord:
     upload_status: str = "pending"
     created_by: UUID | None = None
     created_at: datetime | None = None
+    sample_gene_id: UUID | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -31,6 +32,7 @@ class FileRecord:
             "organization_id": self.organization_id,
             "project_id": self.project_id,
             "sample_id": self.sample_id,
+            "sample_gene_id": self.sample_gene_id,
             "category": self.category,
             "original_name": self.original_name,
             "storage_key": self.storage_key,

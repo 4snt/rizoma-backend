@@ -1,6 +1,7 @@
 """Testes dos dados biológicos da amostra: organism_type, morfologia de
-colônia, testes bioquímicos/enzimáticos (catálogo aberto) e genes
-sequenciados.
+colônia, registro do isolado (origem/cultivo/microscopia), testes
+bioquímicos/enzimáticos (catálogo aberto), genes sequenciados (FASTA +
+BLAST) e alíquotas.
 
 Banco real. Reaproveita fixtures/helpers de `test_lims.py`.
 """
@@ -92,7 +93,7 @@ async def test_patch_morphology_parcial_nao_apaga_outros_campos(client, org_admi
     )
 
     r = await client.patch(
-        f"{PREFIX}/samples/{sample['id']}/morphology",
+        f"{PREFIX}/samples/{sample['id']}",
         json={"colonia_cor": "amarela"},
         headers=h,
     )
@@ -110,11 +111,98 @@ async def test_morfologia_com_valor_fora_do_vocabulario_da_422(client, org_admin
     sample = await _make_sample(client, h, project_id)
 
     r = await client.patch(
-        f"{PREFIX}/samples/{sample['id']}/morphology",
+        f"{PREFIX}/samples/{sample['id']}",
         json={"colonia_forma": "quadrada"},
         headers=h,
     )
     assert r.status_code == 422
+
+
+# ── Registro do isolado (PATCH /samples/{id}) ───────────────────────────
+async def test_patch_isolado_parcial_reflete_no_get_e_preserva_morfologia(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(
+        client, h, project_id,
+        organism_type="bacteria", colonia_forma="circular", colonia_cor="branca",
+    )
+
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample['id']}",
+        json={
+            "isolation_source": "rizosfera",
+            "host_species": "Zea mays",
+            "gram_stain": "negativa",
+            "culture_medium": "TSA",
+        },
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["isolation_source"] == "rizosfera"
+    assert body["gram_stain"] == "negativa"
+
+    r = await client.get(f"{PREFIX}/samples/{sample['id']}", headers=h)
+    got = r.json()
+    assert got["host_species"] == "Zea mays"
+    assert got["culture_medium"] == "TSA"
+    # Morfologia gravada antes continua lá.
+    assert got["colonia_forma"] == "circular"
+    assert got["colonia_cor"] == "branca"
+    assert got["organism_type"] == "bacteria"
+
+
+async def test_patch_gram_stain_fora_do_vocabulario_da_422(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample['id']}", json={"gram_stain": "roxa"}, headers=h
+    )
+    assert r.status_code == 422
+
+
+async def test_patch_so_lat_sem_lon_da_422(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample['id']}", json={"lat": -18.2}, headers=h
+    )
+    assert r.status_code == 422
+
+
+async def test_patch_lat_e_lon_atualiza_geom(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+    assert sample["lat"] is None
+
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample['id']}",
+        json={"lat": -18.2, "lon": -43.6},
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+
+    r = await client.get(f"{PREFIX}/samples/{sample['id']}", headers=h)
+    got = r.json()
+    assert got["lat"] == -18.2
+    assert got["lon"] == -43.6
+
+    # Ambos null limpa o ponto.
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample['id']}", json={"lat": None, "lon": None}, headers=h
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["lat"] is None
+    assert r.json()["lon"] is None
 
 
 # ── Testes bioquímicos/enzimáticos (catálogo aberto) ───────────────────
@@ -186,6 +274,222 @@ async def test_criar_gene_sem_ncbi_accession_e_aceito(client, org_admin):
 
     r = await client.get(f"{PREFIX}/samples/{sample['id']}/genes", headers=h)
     assert len(r.json()) == 1
+
+
+async def test_gene_aceita_fasta_colado_e_normaliza_sequencia(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+
+    r = await client.post(
+        f"{PREFIX}/samples/{sample['id']}/genes",
+        json={
+            "gene": "16S",
+            "purpose": "identificacao",
+            "sequence": ">NEBIM0001_16S\nACGT ACGT\n1 acgtn\n",
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["sequence"] == "ACGTACGTACGTN"
+    assert body["sequence_header"] == "NEBIM0001_16S"
+    assert body["sequence_length"] == 13
+
+
+async def test_gene_com_caractere_fora_do_alfabeto_da_422_listando_os_invalidos(
+    client, org_admin
+):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+
+    r = await client.post(
+        f"{PREFIX}/samples/{sample['id']}/genes",
+        json={"gene": "16S", "purpose": "identificacao", "sequence": "ACGTXQ"},
+        headers=h,
+    )
+    assert r.status_code == 422
+    msg = r.text
+    assert "X" in msg and "Q" in msg
+
+
+async def test_patch_gene_com_resultado_blast(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+
+    r = await client.post(
+        f"{PREFIX}/samples/{sample['id']}/genes",
+        json={"gene": "16S", "purpose": "identificacao"},
+        headers=h,
+    )
+    gene_id = r.json()["id"]
+
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample['id']}/genes/{gene_id}",
+        json={
+            "blast_top_hit": "Bacillus velezensis strain FZB42",
+            "blast_identity_pct": 99.3,
+            "blast_coverage_pct": 100,
+            "blast_hit_accession": "NR_075005.2",
+        },
+        headers=h,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["blast_top_hit"] == "Bacillus velezensis strain FZB42"
+    assert body["blast_identity_pct"] == 99.3
+    assert body["blast_coverage_pct"] == 100
+    assert body["blast_hit_accession"] == "NR_075005.2"
+    assert body["gene"] == "16S"  # não foi tocado
+
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample['id']}/genes/{gene_id}",
+        json={"blast_identity_pct": 101},
+        headers=h,
+    )
+    assert r.status_code == 422
+
+
+async def test_delete_gene_e_teste_somem_da_listagem(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+
+    g = await client.post(
+        f"{PREFIX}/samples/{sample['id']}/genes",
+        json={"gene": "16S", "purpose": "identificacao"},
+        headers=h,
+    )
+    t = await client.post(
+        f"{PREFIX}/samples/{sample['id']}/tests",
+        json={"test_name": "Catalase", "result": "+"},
+        headers=h,
+    )
+    gene_id, test_id = g.json()["id"], t.json()["id"]
+
+    r = await client.delete(f"{PREFIX}/samples/{sample['id']}/genes/{gene_id}", headers=h)
+    assert r.status_code == 204, r.text
+    r = await client.delete(f"{PREFIX}/samples/{sample['id']}/tests/{test_id}", headers=h)
+    assert r.status_code == 204, r.text
+
+    r = await client.get(f"{PREFIX}/samples/{sample['id']}/genes", headers=h)
+    assert r.json() == []
+    r = await client.get(f"{PREFIX}/samples/{sample['id']}/tests", headers=h)
+    assert r.json() == []
+
+
+async def test_delete_subrecurso_com_id_de_outra_amostra_da_404(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample_a = await _make_sample(client, h, project_id, code="BAC-A")
+    sample_b = await _make_sample(client, h, project_id, code="BAC-B")
+
+    g = await client.post(
+        f"{PREFIX}/samples/{sample_a['id']}/genes",
+        json={"gene": "16S", "purpose": "identificacao"},
+        headers=h,
+    )
+    t = await client.post(
+        f"{PREFIX}/samples/{sample_a['id']}/tests",
+        json={"test_name": "Catalase", "result": "+"},
+        headers=h,
+    )
+    gene_id, test_id = g.json()["id"], t.json()["id"]
+
+    # Ids válidos, mas pela URL da amostra B: não pertencem a ela → 404.
+    r = await client.delete(f"{PREFIX}/samples/{sample_b['id']}/genes/{gene_id}", headers=h)
+    assert r.status_code == 404
+    r = await client.delete(f"{PREFIX}/samples/{sample_b['id']}/tests/{test_id}", headers=h)
+    assert r.status_code == 404
+    r = await client.patch(
+        f"{PREFIX}/samples/{sample_b['id']}/genes/{gene_id}",
+        json={"blast_top_hit": "x"},
+        headers=h,
+    )
+    assert r.status_code == 404
+
+    # E continuam existindo na amostra A.
+    r = await client.get(f"{PREFIX}/samples/{sample_a['id']}/genes", headers=h)
+    assert len(r.json()) == 1
+
+
+# ── Alíquotas ───────────────────────────────────────────────────────────
+async def test_aliquotas_crud_e_rotulo_unico_por_amostra(client, org_admin):
+    _, user_id = org_admin
+    h = auth(user_id)
+    project_id = await _make_project(client, h)
+    sample = await _make_sample(client, h, project_id)
+    url = f"{PREFIX}/samples/{sample['id']}/aliquots"
+
+    r1 = await client.post(
+        url,
+        json={"label": "R1", "storage_method": "glicerol_-80", "freezer": "F1", "box": "B3"},
+        headers=h,
+    )
+    assert r1.status_code == 201, r1.text
+    assert r1.json()["status"] == "disponivel"
+    assert r1.json()["storage_method"] == "glicerol_-80"
+
+    r2 = await client.post(url, json={"label": "R2", "storage_method": "liofilizado"}, headers=h)
+    assert r2.status_code == 201, r2.text
+
+    dup = await client.post(url, json={"label": "R1", "storage_method": "placa_4c"}, headers=h)
+    assert dup.status_code == 409
+    assert "R1" in dup.json()["detail"]
+
+    r = await client.get(url, headers=h)
+    assert [a["label"] for a in r.json()] == ["R1", "R2"]
+
+    aliquot_id = r1.json()["id"]
+    r = await client.patch(f"{url}/{aliquot_id}", json={"status": "consumida"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "consumida"
+    assert r.json()["freezer"] == "F1"  # não foi tocado
+
+    r = await client.delete(f"{url}/{aliquot_id}", headers=h)
+    assert r.status_code == 204
+    r = await client.get(url, headers=h)
+    assert [a["label"] for a in r.json()] == ["R2"]
+
+
+async def test_aliquota_de_outra_org_nao_vaza_e_viewer_nao_cria(client, db):
+    org_a = await make_org(db, slug=rand_slug())
+    user_a = await make_user(db)
+    await make_member(db, org_a, user_a, "org_admin")
+    viewer_a = await make_user(db)
+    await make_member(db, org_a, viewer_a, "viewer")
+
+    org_b = await make_org(db, slug=rand_slug())
+    user_b = await make_user(db)
+    await make_member(db, org_b, user_b, "org_admin")
+
+    ha, hb = auth(user_a), auth(user_b)
+    project_a = await _make_project(client, ha)
+    sample_a = await _make_sample(client, ha, project_a)
+    url = f"{PREFIX}/samples/{sample_a['id']}/aliquots"
+
+    r = await client.post(url, json={"label": "R1", "storage_method": "glicerol_-80"}, headers=ha)
+    assert r.status_code == 201, r.text
+
+    # Org B não enxerga nem a amostra.
+    r = await client.get(url, headers=hb)
+    assert r.status_code == 404
+
+    # viewer da própria org lê, mas não cria.
+    r = await client.get(url, headers=auth(viewer_a, "viewer"))
+    assert r.status_code == 200
+    r = await client.post(
+        url, json={"label": "R2", "storage_method": "glicerol_-80"},
+        headers=auth(viewer_a, "viewer"),
+    )
+    assert r.status_code == 403
 
 
 # ── RLS + permissão ──────────────────────────────────────────────────────

@@ -43,6 +43,15 @@ async def presign(ctx: Ctx, req: PresignRequest) -> PresignResponse:
     _ensure_bucket_once()
     repo = PgFileRepository(ctx.session)
 
+    if req.sample_gene_id is not None:
+        # Gene é sub-recurso da amostra: sem sample_id não há como provar que
+        # o gene é dela — e um gene de OUTRA amostra é indistinguível de um
+        # inexistente (RLS + WHERE sample_id), logo 404.
+        if req.sample_id is None:
+            raise HTTPException(422, "sample_gene_id exige sample_id.")
+        if not await repo.gene_belongs_to_sample(req.sample_gene_id, req.sample_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Gene não encontrado nesta amostra.")
+
     file_id = new_id()
     # O id entra na chave para garantir unicidade: dois uploads do mesmo nome na
     # mesma amostra não podem colidir no UNIQUE de storage_key.
@@ -60,6 +69,7 @@ async def presign(ctx: Ctx, req: PresignRequest) -> PresignResponse:
             organization_id=ctx.org_id,
             project_id=req.project_id,
             sample_id=req.sample_id,
+            sample_gene_id=req.sample_gene_id,
             category=req.category,
             original_name=req.original_name,
             storage_key=key,
@@ -105,11 +115,14 @@ async def download_url(ctx: Ctx, file_id: UUID) -> str:
 
 
 async def list_files(
-    ctx: Ctx, project_id: UUID | None, sample_id: UUID | None
+    ctx: Ctx,
+    project_id: UUID | None,
+    sample_id: UUID | None,
+    sample_gene_id: UUID | None = None,
 ) -> list[FileOut]:
     ctx.require("file:read")
     repo = PgFileRepository(ctx.session)
-    files = await repo.list_files(project_id, sample_id)
+    files = await repo.list_files(project_id, sample_id, sample_gene_id)
     return [FileOut(**f.to_dict()) for f in files]
 
 

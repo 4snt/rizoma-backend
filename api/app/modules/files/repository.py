@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.modules.files.domain.entities import FileRecord
 
 _COLS = (
-    "id, organization_id, project_id, sample_id, category, original_name, "
+    "id, organization_id, project_id, sample_id, sample_gene_id, category, original_name, "
     "storage_key, mime_type, size_bytes, sha256, upload_status, created_by, created_at"
 )
 
@@ -34,15 +34,17 @@ class PgFileRepository:
     async def create_pending(self, file: FileRecord) -> None:
         await self.session.execute(
             text(
-                "INSERT INTO files (id, organization_id, project_id, sample_id, category, "
-                "original_name, storage_key, mime_type, size_bytes, upload_status) "
-                "VALUES (:id, :org, :proj, :samp, :cat, :name, :key, :mime, :size, 'pending')"
+                "INSERT INTO files (id, organization_id, project_id, sample_id, sample_gene_id, "
+                "category, original_name, storage_key, mime_type, size_bytes, upload_status) "
+                "VALUES (:id, :org, :proj, :samp, :gene, :cat, :name, :key, :mime, :size, "
+                "'pending')"
             ),
             {
                 "id": str(file.id),
                 "org": str(file.organization_id),
                 "proj": str(file.project_id) if file.project_id else None,
                 "samp": str(file.sample_id) if file.sample_id else None,
+                "gene": str(file.sample_gene_id) if file.sample_gene_id else None,
                 "cat": file.category,
                 "name": file.original_name,
                 "key": file.storage_key,
@@ -70,18 +72,35 @@ class PgFileRepository:
         ).mappings().first()
         return _from_row(dict(row))
 
-    async def list_files(self, project_id: UUID | None, sample_id: UUID | None) -> list[FileRecord]:
+    async def gene_belongs_to_sample(self, sample_gene_id: UUID, sample_id: UUID) -> bool:
+        row = (
+            await self.session.execute(
+                text("SELECT 1 FROM sample_genes WHERE id = :g AND sample_id = :s"),
+                {"g": str(sample_gene_id), "s": str(sample_id)},
+            )
+        ).first()
+        return row is not None
+
+    async def list_files(
+        self,
+        project_id: UUID | None,
+        sample_id: UUID | None,
+        sample_gene_id: UUID | None = None,
+    ) -> list[FileRecord]:
         rows = (
             await self.session.execute(
                 text(
                     f"SELECT {_COLS} FROM files "
                     "WHERE (CAST(:proj AS uuid) IS NULL OR project_id = CAST(:proj AS uuid)) "
                     "  AND (CAST(:samp AS uuid) IS NULL OR sample_id = CAST(:samp AS uuid)) "
+                    "  AND (CAST(:gene AS uuid) IS NULL "
+                    "       OR sample_gene_id = CAST(:gene AS uuid)) "
                     "ORDER BY created_at DESC"
                 ),
                 {
                     "proj": str(project_id) if project_id else None,
                     "samp": str(sample_id) if sample_id else None,
+                    "gene": str(sample_gene_id) if sample_gene_id else None,
                 },
             )
         ).mappings().all()

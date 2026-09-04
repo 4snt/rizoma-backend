@@ -17,15 +17,31 @@ from app.modules.lims.domain.entities import (
     CustodyEvent,
     Project,
     Sample,
+    SampleAliquot,
     SampleGene,
     SampleTest,
 )
 from app.modules.lims.domain.exceptions import DuplicateError
 from app.modules.lims.domain.value_objects import GeoPoint
 
-_SAMPLE_BIO_COLS = (
-    "organism_type, colonia_forma, colonia_elevacao, colonia_margem, "
-    "colonia_cor, colonia_textura, colonia_tamanho_mm, colonia_opacidade"
+# Morfologia de colônia (0010) + registro do isolado (0011). Lista única
+# compartilhada por SELECT/INSERT/UPDATE — nova coluna entra aqui uma vez só.
+_SAMPLE_BIO_COL_NAMES = (
+    "organism_type", "colonia_forma", "colonia_elevacao", "colonia_margem",
+    "colonia_cor", "colonia_textura", "colonia_tamanho_mm", "colonia_opacidade",
+    "strain_name", "isolation_source", "host_species", "host_cultivar",
+    "collection_site", "isolated_at", "culture_medium", "incubation_temp_c",
+    "incubation_hours", "gram_stain", "cell_shape", "motility",
+)
+_SAMPLE_BIO_COLS = ", ".join(_SAMPLE_BIO_COL_NAMES)
+# numeric no Postgres chega como Decimal — vira float na entidade.
+_SAMPLE_NUMERIC_COLS = frozenset({"colonia_tamanho_mm", "incubation_temp_c", "incubation_hours"})
+
+# Colunas que `update_fields` aceita. `lat`/`lon` não são colunas — viram
+# `geom` — mas entram na lista porque chegam pelo mesmo dict.
+_SAMPLE_UPDATABLE = frozenset(
+    ("treatment_group", "replicate", "notes", "occurred_at", "lat", "lon")
+    + _SAMPLE_BIO_COL_NAMES
 )
 
 _SAMPLE_COLS = f"""
@@ -46,8 +62,29 @@ _SAMPLE_TEST_COLS = """
 
 _SAMPLE_GENE_COLS = """
     id, organization_id, sample_id, gene, purpose, result, ncbi_accession,
-    method, tested_at, notes, created_by, created_at, updated_at
+    method, tested_at, notes, sequence, sequence_header, sequence_length,
+    primer_forward, primer_reverse, blast_top_hit, blast_identity_pct,
+    blast_coverage_pct, blast_hit_accession, created_by, created_at, updated_at
 """
+
+# Colunas graváveis do gene (sequence_length é gerada pelo banco — fora).
+_SAMPLE_GENE_WRITABLE = (
+    "gene", "purpose", "result", "ncbi_accession", "method", "tested_at", "notes",
+    "sequence", "sequence_header", "primer_forward", "primer_reverse",
+    "blast_top_hit", "blast_identity_pct", "blast_coverage_pct", "blast_hit_accession",
+)
+
+_SAMPLE_ALIQUOT_COLS = """
+    id, organization_id, sample_id, label, storage_method, freezer, box, position,
+    stored_at, status, notes, created_by, created_at, updated_at
+"""
+_SAMPLE_ALIQUOT_WRITABLE = (
+    "label", "storage_method", "freezer", "box", "position", "stored_at", "status", "notes",
+)
+
+
+def _num(value: Any) -> float | None:
+    return float(value) if value is not None else None
 
 _GEOM_SQL = (
     "CASE WHEN CAST(:lat AS double precision) IS NULL "
@@ -91,16 +128,10 @@ def _sample_from_row(row: dict[str, Any]) -> Sample:
         recorded_at=row["recorded_at"],
         notes=row["notes"],
         created_at=row["created_at"],
-        organism_type=row.get("organism_type"),
-        colonia_forma=row.get("colonia_forma"),
-        colonia_elevacao=row.get("colonia_elevacao"),
-        colonia_margem=row.get("colonia_margem"),
-        colonia_cor=row.get("colonia_cor"),
-        colonia_textura=row.get("colonia_textura"),
-        colonia_tamanho_mm=(
-            float(row["colonia_tamanho_mm"]) if row.get("colonia_tamanho_mm") is not None else None
-        ),
-        colonia_opacidade=row.get("colonia_opacidade"),
+        **{
+            col: (_num(row.get(col)) if col in _SAMPLE_NUMERIC_COLS else row.get(col))
+            for col in _SAMPLE_BIO_COL_NAMES
+        },
     )
 
 
@@ -131,6 +162,34 @@ def _sample_gene_from_row(row: dict[str, Any]) -> SampleGene:
         ncbi_accession=row["ncbi_accession"],
         method=row["method"],
         tested_at=row["tested_at"],
+        notes=row["notes"],
+        sequence=row.get("sequence"),
+        sequence_header=row.get("sequence_header"),
+        sequence_length=row.get("sequence_length"),
+        primer_forward=row.get("primer_forward"),
+        primer_reverse=row.get("primer_reverse"),
+        blast_top_hit=row.get("blast_top_hit"),
+        blast_identity_pct=_num(row.get("blast_identity_pct")),
+        blast_coverage_pct=_num(row.get("blast_coverage_pct")),
+        blast_hit_accession=row.get("blast_hit_accession"),
+        created_by=row["created_by"],
+        created_at=row["created_at"],
+        updated_at=row["updated_at"],
+    )
+
+
+def _sample_aliquot_from_row(row: dict[str, Any]) -> SampleAliquot:
+    return SampleAliquot(
+        id=row["id"],
+        organization_id=row["organization_id"],
+        sample_id=row["sample_id"],
+        label=row["label"],
+        storage_method=row["storage_method"],
+        freezer=row["freezer"],
+        box=row["box"],
+        position=row["position"],
+        stored_at=row["stored_at"],
+        status=row["status"],
         notes=row["notes"],
         created_by=row["created_by"],
         created_at=row["created_at"],
@@ -232,6 +291,7 @@ class PgSampleRepository:
         self.session = session
 
     async def create(self, sample: Sample) -> Sample:
+        bio_placeholders = ", ".join(f":{col}" for col in _SAMPLE_BIO_COL_NAMES)
         try:
             res = await self.session.execute(
                 text(
@@ -239,12 +299,10 @@ class PgSampleRepository:
                     INSERT INTO samples
                         (id, organization_id, project_id, code, matrix, treatment_group,
                          replicate, status, geom, collected_by, occurred_at, notes,
-                         organism_type, colonia_forma, colonia_elevacao, colonia_margem,
-                         colonia_cor, colonia_textura, colonia_tamanho_mm, colonia_opacidade)
+                         {_SAMPLE_BIO_COLS})
                     VALUES (:id, :org, :project, :code, :matrix, :group, :replicate,
                             :status, {_GEOM_SQL}, :user, :occurred_at, :notes,
-                            :organism_type, :colonia_forma, :colonia_elevacao, :colonia_margem,
-                            :colonia_cor, :colonia_textura, :colonia_tamanho_mm, :colonia_opacidade)
+                            {bio_placeholders})
                     RETURNING {_SAMPLE_COLS}
                     """
                 ),
@@ -261,14 +319,7 @@ class PgSampleRepository:
                     "user": str(sample.collected_by) if sample.collected_by else None,
                     "occurred_at": sample.occurred_at,
                     "notes": sample.notes,
-                    "organism_type": sample.organism_type,
-                    "colonia_forma": sample.colonia_forma,
-                    "colonia_elevacao": sample.colonia_elevacao,
-                    "colonia_margem": sample.colonia_margem,
-                    "colonia_cor": sample.colonia_cor,
-                    "colonia_textura": sample.colonia_textura,
-                    "colonia_tamanho_mm": sample.colonia_tamanho_mm,
-                    "colonia_opacidade": sample.colonia_opacidade,
+                    **{col: getattr(sample, col) for col in _SAMPLE_BIO_COL_NAMES},
                 },
             )
         except IntegrityError as exc:
@@ -292,16 +343,16 @@ class PgSampleRepository:
         RLS já isola por organização, então não precisa repetir
         `organization_id` aqui — e não é N+1 por projeto no frontend.
         """
+        bio_cols = ", ".join(f"s.{col}" for col in _SAMPLE_BIO_COL_NAMES)
         res = await self.session.execute(
             text(
-                """
+                f"""
                 SELECT
                     s.id, s.organization_id, s.project_id, s.code, s.matrix,
                     s.treatment_group, s.replicate, s.status, s.collected_by,
                     s.occurred_at, s.recorded_at, s.notes, s.created_at,
                     ST_Y(s.geom::geometry) AS lat, ST_X(s.geom::geometry) AS lon,
-                    s.organism_type, s.colonia_forma, s.colonia_elevacao, s.colonia_margem,
-                    s.colonia_cor, s.colonia_textura, s.colonia_tamanho_mm, s.colonia_opacidade,
+                    {bio_cols},
                     p.code AS project_code, p.name AS project_name
                 FROM samples s
                 JOIN projects p ON p.id = s.project_id
@@ -311,7 +362,13 @@ class PgSampleRepository:
             ),
             {"project_id": str(project_id) if project_id else None},
         )
-        return [dict(r) for r in res.mappings().all()]
+        rows = []
+        for r in res.mappings().all():
+            d = dict(r)
+            for col in _SAMPLE_NUMERIC_COLS:
+                d[col] = _num(d.get(col))
+            rows.append(d)
+        return rows
 
     async def get(self, sample_id: UUID) -> Sample | None:
         res = await self.session.execute(
@@ -341,15 +398,38 @@ class PgSampleRepository:
         row = res.mappings().first()
         return _sample_from_row(dict(row)) if row is not None else None
 
-    async def update_morphology(self, sample_id: UUID, fields: dict[str, Any]) -> Sample | None:
-        """UPDATE parcial dos campos biológicos — só grava o que veio em
-        `fields` (chaves de `SampleMorphologyUpdate` com valor setado)."""
+    async def update_fields(self, sample_id: UUID, fields: dict[str, Any]) -> Sample | None:
+        """UPDATE parcial da amostra — só grava o que veio em `fields`
+        (chaves de `SampleUpdate` com valor setado; `None` limpa a coluna).
+
+        `lat`/`lon` não são colunas: viram um único `geom` (ambos número →
+        ponto; ambos None → NULL). O schema garante que chegam juntos.
+        Chave fora de `_SAMPLE_UPDATABLE` é bug de chamada, não input do
+        usuário — estoura em vez de virar SQL."""
+        unknown = set(fields) - _SAMPLE_UPDATABLE
+        if unknown:
+            raise ValueError(f"Colunas não atualizáveis em samples: {sorted(unknown)}")
         if not fields:
             return await self.get(sample_id)
-        assignments = ", ".join(f"{col} = :{col}" for col in fields)
+
+        params: dict[str, Any] = {"id": str(sample_id)}
+        assignments: list[str] = []
+        if "lat" in fields or "lon" in fields:
+            assignments.append(f"geom = {_GEOM_SQL}")
+            params["lat"] = fields.get("lat")
+            params["lon"] = fields.get("lon")
+        for col, value in fields.items():
+            if col in ("lat", "lon"):
+                continue
+            assignments.append(f"{col} = :{col}")
+            params[col] = value
+
         res = await self.session.execute(
-            text(f"UPDATE samples SET {assignments} WHERE id = :id RETURNING {_SAMPLE_COLS}"),
-            {**fields, "id": str(sample_id)},
+            text(
+                f"UPDATE samples SET {', '.join(assignments)} "
+                f"WHERE id = :id RETURNING {_SAMPLE_COLS}"
+            ),
+            params,
         )
         row = res.mappings().first()
         return _sample_from_row(dict(row)) if row is not None else None
@@ -390,15 +470,24 @@ class PgSampleRepository:
         )
         return [_sample_test_from_row(dict(r)) for r in res.mappings().all()]
 
+    async def delete_test(self, sample_id: UUID, test_id: UUID) -> bool:
+        """`AND sample_id = :s` de propósito: o id do teste sozinho não
+        prova que ele pertence à amostra da URL."""
+        res = await self.session.execute(
+            text("DELETE FROM sample_tests WHERE id = :id AND sample_id = :s"),
+            {"id": str(test_id), "s": str(sample_id)},
+        )
+        return res.rowcount > 0
+
     async def create_gene(self, gene: SampleGene) -> SampleGene:
+        cols = ", ".join(_SAMPLE_GENE_WRITABLE)
+        placeholders = ", ".join(f":{c}" for c in _SAMPLE_GENE_WRITABLE)
         res = await self.session.execute(
             text(
                 f"""
                 INSERT INTO sample_genes
-                    (id, organization_id, sample_id, gene, purpose, result,
-                     ncbi_accession, method, tested_at, notes, created_by)
-                VALUES (:id, :org, :sample, :gene, :purpose, :result,
-                        :ncbi_accession, :method, :tested_at, :notes, :user)
+                    (id, organization_id, sample_id, created_by, {cols})
+                VALUES (:id, :org, :sample, :user, {placeholders})
                 RETURNING {_SAMPLE_GENE_COLS}
                 """
             ),
@@ -406,17 +495,38 @@ class PgSampleRepository:
                 "id": str(gene.id),
                 "org": str(gene.organization_id),
                 "sample": str(gene.sample_id),
-                "gene": gene.gene,
-                "purpose": gene.purpose,
-                "result": gene.result,
-                "ncbi_accession": gene.ncbi_accession,
-                "method": gene.method,
-                "tested_at": gene.tested_at,
-                "notes": gene.notes,
                 "user": str(gene.created_by) if gene.created_by else None,
+                **{c: getattr(gene, c) for c in _SAMPLE_GENE_WRITABLE},
             },
         )
         return _sample_gene_from_row(dict(res.mappings().first()))
+
+    async def update_gene(
+        self, sample_id: UUID, gene_id: UUID, fields: dict[str, Any]
+    ) -> SampleGene | None:
+        """UPDATE parcial do gene. Devolve None se o gene não existe NESTA
+        amostra (o service traduz pra 404)."""
+        unknown = set(fields) - set(_SAMPLE_GENE_WRITABLE)
+        if unknown:
+            raise ValueError(f"Colunas não atualizáveis em sample_genes: {sorted(unknown)}")
+        assignments = ", ".join(f"{col} = :{col}" for col in fields)
+        set_clause = f"{assignments}, updated_at = now()" if assignments else "updated_at = now()"
+        res = await self.session.execute(
+            text(
+                f"UPDATE sample_genes SET {set_clause} "
+                f"WHERE id = :id AND sample_id = :s RETURNING {_SAMPLE_GENE_COLS}"
+            ),
+            {**fields, "id": str(gene_id), "s": str(sample_id)},
+        )
+        row = res.mappings().first()
+        return _sample_gene_from_row(dict(row)) if row is not None else None
+
+    async def delete_gene(self, sample_id: UUID, gene_id: UUID) -> bool:
+        res = await self.session.execute(
+            text("DELETE FROM sample_genes WHERE id = :id AND sample_id = :s"),
+            {"id": str(gene_id), "s": str(sample_id)},
+        )
+        return res.rowcount > 0
 
     async def list_genes(self, sample_id: UUID) -> list[SampleGene]:
         res = await self.session.execute(
@@ -427,6 +537,74 @@ class PgSampleRepository:
             {"s": str(sample_id)},
         )
         return [_sample_gene_from_row(dict(r)) for r in res.mappings().all()]
+
+    # ── Alíquotas ────────────────────────────────────────────────────────
+    async def create_aliquot(self, aliquot: SampleAliquot) -> SampleAliquot:
+        cols = ", ".join(_SAMPLE_ALIQUOT_WRITABLE)
+        placeholders = ", ".join(f":{c}" for c in _SAMPLE_ALIQUOT_WRITABLE)
+        try:
+            res = await self.session.execute(
+                text(
+                    f"""
+                    INSERT INTO sample_aliquots
+                        (id, organization_id, sample_id, created_by, {cols})
+                    VALUES (:id, :org, :sample, :user, {placeholders})
+                    RETURNING {_SAMPLE_ALIQUOT_COLS}
+                    """
+                ),
+                {
+                    "id": str(aliquot.id),
+                    "org": str(aliquot.organization_id),
+                    "sample": str(aliquot.sample_id),
+                    "user": str(aliquot.created_by) if aliquot.created_by else None,
+                    **{c: getattr(aliquot, c) for c in _SAMPLE_ALIQUOT_WRITABLE},
+                },
+            )
+        except IntegrityError as exc:
+            raise DuplicateError(
+                f"Já existe uma alíquota com o rótulo '{aliquot.label}' nesta amostra."
+            ) from exc
+        return _sample_aliquot_from_row(dict(res.mappings().first()))
+
+    async def list_aliquots(self, sample_id: UUID) -> list[SampleAliquot]:
+        res = await self.session.execute(
+            text(
+                f"SELECT {_SAMPLE_ALIQUOT_COLS} FROM sample_aliquots "
+                "WHERE sample_id = :s ORDER BY created_at"
+            ),
+            {"s": str(sample_id)},
+        )
+        return [_sample_aliquot_from_row(dict(r)) for r in res.mappings().all()]
+
+    async def update_aliquot(
+        self, sample_id: UUID, aliquot_id: UUID, fields: dict[str, Any]
+    ) -> SampleAliquot | None:
+        unknown = set(fields) - set(_SAMPLE_ALIQUOT_WRITABLE)
+        if unknown:
+            raise ValueError(f"Colunas não atualizáveis em sample_aliquots: {sorted(unknown)}")
+        assignments = ", ".join(f"{col} = :{col}" for col in fields)
+        set_clause = f"{assignments}, updated_at = now()" if assignments else "updated_at = now()"
+        try:
+            res = await self.session.execute(
+                text(
+                    f"UPDATE sample_aliquots SET {set_clause} "
+                    f"WHERE id = :id AND sample_id = :s RETURNING {_SAMPLE_ALIQUOT_COLS}"
+                ),
+                {**fields, "id": str(aliquot_id), "s": str(sample_id)},
+            )
+        except IntegrityError as exc:
+            raise DuplicateError(
+                f"Já existe uma alíquota com o rótulo '{fields.get('label')}' nesta amostra."
+            ) from exc
+        row = res.mappings().first()
+        return _sample_aliquot_from_row(dict(row)) if row is not None else None
+
+    async def delete_aliquot(self, sample_id: UUID, aliquot_id: UUID) -> bool:
+        res = await self.session.execute(
+            text("DELETE FROM sample_aliquots WHERE id = :id AND sample_id = :s"),
+            {"id": str(aliquot_id), "s": str(sample_id)},
+        )
+        return res.rowcount > 0
 
     async def last_custody_event(self, sample_id: UUID) -> CustodyEvent | None:
         res = await self.session.execute(

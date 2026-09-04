@@ -162,6 +162,20 @@ class Sample:
     colonia_textura: str | None = None
     colonia_tamanho_mm: float | None = None
     colonia_opacidade: str | None = None
+    # Registro do isolado: identidade da cepa, origem/hospedeiro, cultivo,
+    # caracterização microscópica.
+    strain_name: str | None = None
+    isolation_source: str | None = None
+    host_species: str | None = None
+    host_cultivar: str | None = None
+    collection_site: str | None = None
+    isolated_at: date | None = None
+    culture_medium: str | None = None
+    incubation_temp_c: float | None = None
+    incubation_hours: float | None = None
+    gram_stain: str | None = None
+    cell_shape: str | None = None
+    motility: str | None = None
 
     def assert_can_transition_to(self, target_status: str) -> None:
         """Delega à máquina de estados de `custody.py`. Lança
@@ -193,6 +207,18 @@ class Sample:
             "colonia_textura": self.colonia_textura,
             "colonia_tamanho_mm": self.colonia_tamanho_mm,
             "colonia_opacidade": self.colonia_opacidade,
+            "strain_name": self.strain_name,
+            "isolation_source": self.isolation_source,
+            "host_species": self.host_species,
+            "host_cultivar": self.host_cultivar,
+            "collection_site": self.collection_site,
+            "isolated_at": self.isolated_at,
+            "culture_medium": self.culture_medium,
+            "incubation_temp_c": self.incubation_temp_c,
+            "incubation_hours": self.incubation_hours,
+            "gram_stain": self.gram_stain,
+            "cell_shape": self.cell_shape,
+            "motility": self.motility,
         }
 
 
@@ -234,8 +260,9 @@ class SampleTest:
 @dataclass
 class SampleGene:
     """Um gene sequenciado (16S p/ identificação, genes de resistência ou
-    produção de enzima). Metadado + resultado, de propósito — sem sequência
-    bruta/FASTA."""
+    produção de enzima). Metadado + resultado + a sequência normalizada e o
+    resumo do BLAST. `sequence_length` é calculado pelo banco (coluna
+    gerada), por isso nunca é informado na criação."""
 
     id: UUID
     organization_id: UUID
@@ -247,6 +274,15 @@ class SampleGene:
     method: str | None = None
     tested_at: date | None = None
     notes: str | None = None
+    sequence: str | None = None
+    sequence_header: str | None = None
+    sequence_length: int | None = None
+    primer_forward: str | None = None
+    primer_reverse: str | None = None
+    blast_top_hit: str | None = None
+    blast_identity_pct: float | None = None
+    blast_coverage_pct: float | None = None
+    blast_hit_accession: str | None = None
     created_by: UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -262,6 +298,55 @@ class SampleGene:
             "ncbi_accession": self.ncbi_accession,
             "method": self.method,
             "tested_at": self.tested_at,
+            "notes": self.notes,
+            "sequence": self.sequence,
+            "sequence_header": self.sequence_header,
+            "sequence_length": self.sequence_length,
+            "primer_forward": self.primer_forward,
+            "primer_reverse": self.primer_reverse,
+            "blast_top_hit": self.blast_top_hit,
+            "blast_identity_pct": self.blast_identity_pct,
+            "blast_coverage_pct": self.blast_coverage_pct,
+            "blast_hit_accession": self.blast_hit_accession,
+            "created_by": self.created_by,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+        }
+
+
+@dataclass
+class SampleAliquot:
+    """Uma alíquota física da cepa (tubo de glicerol, liofilizado, placa...).
+    Estoque mutável, CRUD normal — mesmo raciocínio de `SampleTest`: não é
+    elo de custódia legal."""
+
+    id: UUID
+    organization_id: UUID
+    sample_id: UUID
+    label: str
+    storage_method: str
+    freezer: str | None = None
+    box: str | None = None
+    position: str | None = None
+    stored_at: date | None = None
+    status: str = "disponivel"
+    notes: str | None = None
+    created_by: UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "organization_id": self.organization_id,
+            "sample_id": self.sample_id,
+            "label": self.label,
+            "storage_method": self.storage_method,
+            "freezer": self.freezer,
+            "box": self.box,
+            "position": self.position,
+            "stored_at": self.stored_at,
+            "status": self.status,
             "notes": self.notes,
             "created_by": self.created_by,
             "created_at": self.created_at,
