@@ -49,7 +49,7 @@ def main() -> None:
     args = ap.parse_args()
 
     headers = {"Authorization": f"Bearer {args.token}"}
-    created_samples, replayed_samples, created_tests, named_strains, warnings = 0, 0, 0, 0, []
+    created_samples, replayed_samples, created_tests, warnings = 0, 0, 0, []
 
     with httpx.Client(base_url=args.base_url, headers=headers, timeout=30) as client:
         with open(args.csv_path, newline="", encoding="utf-8") as f:
@@ -64,7 +64,6 @@ def main() -> None:
                     "matrix": "cultura_microbiana",
                     "organism_type": "bacteria",
                     "treatment_group": bac,
-                    "strain_name": f"NEBIM-{bac}" if bac else None,
                 }
                 r = client.post(
                     f"/api/v2/lims/projects/{args.project_id}/samples",
@@ -74,33 +73,11 @@ def main() -> None:
                 if r.status_code not in (200, 201):
                     warnings.append(f"{code}: falha ao criar amostra ({r.status_code} {r.text})")
                     continue
-                sample = r.json()
-                sample_id = sample["id"]
+                sample_id = r.json()["id"]
                 if r.headers.get("Idempotent-Replay") == "true":
                     replayed_samples += 1
-                    # O replay devolve o corpo GRAVADO na primeira importação —
-                    # pode ser anterior a `strain_name` existir. O estado atual
-                    # vem do GET, senão o PATCH abaixo rodaria a cada reimport.
-                    cur = client.get(f"/api/v2/lims/samples/{sample_id}")
-                    if cur.status_code == 200:
-                        sample = cur.json()
                 else:
                     created_samples += 1
-
-                # Amostras importadas antes de `strain_name` existir ganham o
-                # nome da cepa via PATCH. Só quando está nulo — reimport não
-                # sobrescreve o que alguém já editou na UI.
-                if bac and sample.get("strain_name") is None:
-                    pr = client.patch(
-                        f"/api/v2/lims/samples/{sample_id}",
-                        json={"strain_name": f"NEBIM-{bac}"},
-                    )
-                    if pr.status_code != 200:
-                        warnings.append(
-                            f"{code}: falha ao definir strain_name ({pr.status_code} {pr.text})"
-                        )
-                    else:
-                        named_strains += 1
 
                 # Idempotência dos testes: a Idempotency-Key só cobre a amostra.
                 # UNIQUE(sample_id, test_name, tested_at) não segura reimport
@@ -133,7 +110,7 @@ def main() -> None:
 
     print(
         f"{created_samples} amostra(s) criada(s), {replayed_samples} já existente(s), "
-        f"{created_tests} teste(s) criado(s), {named_strains} strain_name preenchido(s)."
+        f"{created_tests} teste(s) criado(s)."
     )
     if warnings:
         print(f"{len(warnings)} aviso(s):", file=sys.stderr)

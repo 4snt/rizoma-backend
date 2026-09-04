@@ -143,7 +143,6 @@ class SampleCreate(BaseModel):
     colonia_tamanho_mm: float | None = Field(default=None, ge=0)
     colonia_opacidade: ColoniaOpacidade | None = None
     # Registro do isolado: identidade da cepa, origem, cultivo, microscopia.
-    strain_name: str | None = None
     isolation_source: str | None = None
     host_species: str | None = None
     host_cultivar: str | None = None
@@ -183,7 +182,6 @@ class SampleOut(BaseModel):
     colonia_textura: ColoniaTextura | None = None
     colonia_tamanho_mm: float | None = None
     colonia_opacidade: ColoniaOpacidade | None = None
-    strain_name: str | None = None
     isolation_source: str | None = None
     host_species: str | None = None
     host_cultivar: str | None = None
@@ -219,7 +217,6 @@ class SampleUpdate(BaseModel):
     colonia_textura: ColoniaTextura | None = None
     colonia_tamanho_mm: float | None = Field(default=None, ge=0)
     colonia_opacidade: ColoniaOpacidade | None = None
-    strain_name: str | None = None
     isolation_source: str | None = None
     host_species: str | None = None
     host_cultivar: str | None = None

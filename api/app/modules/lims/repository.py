@@ -29,7 +29,7 @@ from app.modules.lims.domain.value_objects import GeoPoint
 _SAMPLE_BIO_COL_NAMES = (
     "organism_type", "colonia_forma", "colonia_elevacao", "colonia_margem",
     "colonia_cor", "colonia_textura", "colonia_tamanho_mm", "colonia_opacidade",
-    "strain_name", "isolation_source", "host_species", "host_cultivar",
+    "isolation_source", "host_species", "host_cultivar",
     "collection_site", "isolated_at", "culture_medium", "incubation_temp_c",
     "incubation_hours", "gram_stain", "cell_shape", "motility",
 )

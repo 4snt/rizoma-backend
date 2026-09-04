@@ -118,7 +118,6 @@ async def create_sample(ctx: Ctx, project_id: UUID, data: SampleCreate) -> dict[
         colonia_textura=data.colonia_textura,
         colonia_tamanho_mm=data.colonia_tamanho_mm,
         colonia_opacidade=data.colonia_opacidade,
-        strain_name=data.strain_name,
         isolation_source=data.isolation_source,
         host_species=data.host_species,
         host_cultivar=data.host_cultivar,

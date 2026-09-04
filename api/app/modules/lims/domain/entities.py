@@ -164,7 +164,6 @@ class Sample:
     colonia_opacidade: str | None = None
     # Registro do isolado: identidade da cepa, origem/hospedeiro, cultivo,
     # caracterização microscópica.
-    strain_name: str | None = None
     isolation_source: str | None = None
     host_species: str | None = None
     host_cultivar: str | None = None
@@ -207,7 +206,6 @@ class Sample:
             "colonia_textura": self.colonia_textura,
             "colonia_tamanho_mm": self.colonia_tamanho_mm,
             "colonia_opacidade": self.colonia_opacidade,
-            "strain_name": self.strain_name,
             "isolation_source": self.isolation_source,
             "host_species": self.host_species,
             "host_cultivar": self.host_cultivar,
